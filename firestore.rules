@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().exists() && userDoc().data.role == 'admin';
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+
+      // Self-registration is staff-only. Admin must be granted explicitly.
+      allow create: if (isSelf(userId)
+          && request.resource.data.uid == userId
+          && request.resource.data.role == 'staff')
+        || isAdmin();
+
+      // Users can update their own profile fields, but cannot escalate role.
+      allow update: if (isSelf(userId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role)
+        || isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    match /app_config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /tags/{tagId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if isAdmin();
+
+      match /events/{eventId} {
+        allow read, write: if isAdmin();
+      }
+    }
+  }
+}
