@@ -21,6 +21,14 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Harden Git for dependency fetches
+        shell: bash
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+
       - name: Flutter pub get
         run: flutter pub get
 
@@ -29,6 +37,33 @@ jobs:
         run: |
           if [ ! -f ios/Podfile ]; then
             flutter create --platforms=ios .
+          fi
+
+      - name: Install iOS pods (retry)
+        shell: bash
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          success=0
+
+          for attempt in 1 2 3 4 5; do
+            echo "Running pod install attempt ${attempt}/5"
+
+            if pod install --repo-update; then
+              success=1
+              break
+            fi
+
+            if [ "${attempt}" -lt 5 ]; then
+              echo "pod install failed (likely transient network issue). Cleaning pod state and retrying..."
+              rm -rf Pods Podfile.lock
+              sleep $((attempt * 20))
+            fi
+          done
+
+          if [ "${success}" -ne 1 ]; then
+            echo "pod install failed after 5 attempts."
+            exit 1
           fi
 
       - name: Build iOS app (unsigned, with retry)
@@ -46,8 +81,7 @@ jobs:
             fi
 
             if [ "${attempt}" -lt 3 ]; then
-              echo "Build failed (likely transient network/pod issue). Cleaning CocoaPods state and retrying..."
-              rm -rf ios/Pods ios/Podfile.lock
+              echo "Build failed. Retrying..."
               sleep 20
             fi
           done
