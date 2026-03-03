@@ -1,0 +1,41 @@
+name: iOS Build (No Codesign)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ios-build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Ensure iOS scaffolding exists
+        shell: bash
+        run: |
+          if [ ! -f ios/Podfile ]; then
+            flutter create --platforms=ios .
+          fi
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --debug --no-codesign
+
+      - name: Upload Runner.app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-runner-app
+          path: build/ios/iphoneos/Runner.app
