@@ -9,7 +9,7 @@ on:
 
 jobs:
   ios-build:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout
@@ -29,6 +29,13 @@ jobs:
           git config --global http.lowSpeedLimit 1000
           git config --global http.lowSpeedTime 60
 
+      - name: Authenticate GitHub git clones
+        shell: bash
+        run: |
+          # Make pod git dependencies clone via authenticated GitHub URL.
+          # This helps avoid transient anonymous clone failures/rate issues.
+          git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
+
       - name: Flutter pub get
         run: flutter pub get
 
@@ -39,6 +46,17 @@ jobs:
             flutter create --platforms=ios .
           fi
 
+      - name: Cache CocoaPods artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos
+            ~/Library/Caches/CocoaPods
+            ios/Pods
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('ios/Podfile', 'pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
+
       - name: Install iOS pods (retry)
         shell: bash
         working-directory: ios
@@ -46,23 +64,30 @@ jobs:
           set -euo pipefail
           success=0
 
-          for attempt in 1 2 3 4 5; do
-            echo "Running pod install attempt ${attempt}/5"
+          for attempt in 1 2 3 4 5 6 7 8; do
+            echo "Running pod install attempt ${attempt}/8"
 
-            if pod install --repo-update; then
+            if [ "${attempt}" -eq 1 ]; then
+              pod_cmd=(pod install --repo-update)
+            else
+              pod_cmd=(pod install)
+            fi
+
+            if "${pod_cmd[@]}"; then
               success=1
               break
             fi
 
-            if [ "${attempt}" -lt 5 ]; then
+            if [ "${attempt}" -lt 8 ]; then
               echo "pod install failed (likely transient network issue). Cleaning pod state and retrying..."
-              rm -rf Pods Podfile.lock
-              sleep $((attempt * 20))
+              rm -rf Pods
+              rm -rf ~/Library/Caches/CocoaPods/Pods/External
+              sleep $((attempt * 30))
             fi
           done
 
           if [ "${success}" -ne 1 ]; then
-            echo "pod install failed after 5 attempts."
+            echo "pod install failed after 8 attempts."
             exit 1
           fi
 
