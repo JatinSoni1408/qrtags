@@ -31,8 +31,31 @@ jobs:
             flutter create --platforms=ios .
           fi
 
-      - name: Build iOS app (unsigned)
-        run: flutter build ios --debug --no-codesign
+      - name: Build iOS app (unsigned, with retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=0
+
+          for attempt in 1 2 3; do
+            echo "Starting iOS build attempt ${attempt}/3"
+
+            if flutter build ios --debug --no-codesign; then
+              success=1
+              break
+            fi
+
+            if [ "${attempt}" -lt 3 ]; then
+              echo "Build failed (likely transient network/pod issue). Cleaning CocoaPods state and retrying..."
+              rm -rf ios/Pods ios/Podfile.lock
+              sleep 20
+            fi
+          done
+
+          if [ "${success}" -ne 1 ]; then
+            echo "iOS build failed after 3 attempts."
+            exit 1
+          fi
 
       - name: Package unsigned IPA
         shell: bash
