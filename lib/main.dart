@@ -245,14 +245,28 @@ class _BootstrapGateState extends State<_BootstrapGate> {
       future: _bootstrapFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          final errorDetails = snapshot.error?.toString() ?? 'Unknown error';
           return Scaffold(
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Failed to initialize app services. Please restart the app.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Failed to initialize app services. Please restart the app.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      errorDetails,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
+                    ),
+                  ],
                 ),
               ),
             ),
