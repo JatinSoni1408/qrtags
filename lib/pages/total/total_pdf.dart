@@ -978,29 +978,6 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       }
                     },
                   ),
-                  PdfPreviewAction(
-                    icon: const Icon(Icons.share),
-                    onPressed: (actionContext, build, pageFormat) async {
-                      try {
-                        final bytes = await build(pageFormat);
-                        final filename =
-                            'Bill-${DateTime.now().millisecondsSinceEpoch}.pdf';
-                        await Printing.sharePdf(
-                          bytes: bytes,
-                          filename: filename,
-                        );
-                      } catch (error, stackTrace) {
-                        debugPrint('TotalPage: failed to share bill: $error');
-                        debugPrintStack(stackTrace: stackTrace);
-                        if (!actionContext.mounted) {
-                          return;
-                        }
-                        ScaffoldMessenger.of(actionContext).showSnackBar(
-                          const SnackBar(content: Text('Failed to share bill')),
-                        );
-                      }
-                    },
-                  ),
                 ],
                 build: (pageFormat) => _buildTotalsPdfBytes(
                   data,
