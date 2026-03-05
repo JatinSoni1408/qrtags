@@ -5,9 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'l10n/app_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/edit_tag_request.dart';
+import 'constants/storage_keys.dart';
 import 'data/tag_migration_runner.dart';
 import 'pages/generate_page.dart';
 import 'pages/inventory_page.dart';
@@ -28,17 +30,17 @@ Future<void> _resetWorkingPagesStateOnColdStart() async {
   final prefs = await SharedPreferences.getInstance();
   const keysToClear = <String>[
     // Scan page selection state
-    'selected_items',
-    'selected_items_gst',
+    StorageKeys.selectedItems,
+    StorageKeys.selectedItemsGst,
     // Old page entries
-    'old_items',
+    StorageKeys.oldItems,
     // Total page draft state
-    'total_draft_customer_name',
-    'total_draft_customer_mobile',
-    'total_draft_discount',
-    'total_draft_payment_entries',
+    StorageKeys.totalDraftCustomerName,
+    StorageKeys.totalDraftCustomerMobile,
+    StorageKeys.totalDraftDiscount,
+    StorageKeys.totalDraftPaymentEntries,
     // Manual hallmark confirmation tied to current scan session
-    'manual_items_hallmarked',
+    StorageKeys.manualItemsHallmarked,
   ];
   for (final key in keysToClear) {
     await prefs.remove(key);
@@ -218,6 +220,8 @@ class MyApp extends StatelessWidget {
       theme: _AppTheme.lightTheme,
       darkTheme: _AppTheme.darkTheme,
       themeMode: ThemeMode.system,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: const _BootstrapGate(),
     );
   }
@@ -463,7 +467,7 @@ class _AuthGateState extends State<_AuthGate> {
       final prefs = await SharedPreferences.getInstance();
       await TagMigrationRunner.runIfNeeded(prefs: prefs);
     } catch (_) {
-      // ignore migration failures
+      // ignor e migration failures
     }
   }
 
@@ -683,7 +687,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<bool> _scanSelectionHasManualItems() async {
     final prefs = await SharedPreferences.getInstance();
-    final items = prefs.getStringList('selected_items') ?? const <String>[];
+    final items =
+        prefs.getStringList(StorageKeys.selectedItems) ?? const <String>[];
     for (final raw in items) {
       try {
         final parsed = jsonDecode(raw);
@@ -735,7 +740,7 @@ class _MyHomePageState extends State<MyHomePage> {
       return false;
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('manual_items_hallmarked', answer);
+    await prefs.setBool(StorageKeys.manualItemsHallmarked, answer);
     return true;
   }
 
@@ -886,12 +891,23 @@ class _MyHomePageState extends State<MyHomePage> {
           centerTitle: true,
           actions: [
             if (!widget.isStaff) const _VibratingTitleSettingsButton(),
-            IconButton(
-              tooltip: 'Logout',
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-              },
-              icon: const Icon(Icons.logout),
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: IconButton(
+                tooltip: 'Logout',
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                hoverColor: Colors.transparent,
+                focusColor: Colors.transparent,
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                icon: const Icon(
+                  Icons.logout,
+                  color: Colors.transparent,
+                ),
+              ),
             ),
           ],
         ),
@@ -976,9 +992,9 @@ class _GstSettingsButton extends StatelessWidget {
 
   Future<void> _showGstToggle(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    bool gstEnabled = prefs.getBool('gst_enabled') ?? false;
-    bool makingEnabled = prefs.getBool('making_enabled') ?? false;
-    bool discountEnabled = prefs.getBool('discount_enabled') ?? false;
+    bool gstEnabled = prefs.getBool(StorageKeys.gstEnabled) ?? false;
+    bool makingEnabled = prefs.getBool(StorageKeys.makingEnabled) ?? false;
+    bool discountEnabled = prefs.getBool(StorageKeys.discountEnabled) ?? false;
     if (!context.mounted) {
       return;
     }
@@ -1042,9 +1058,15 @@ class _GstSettingsButton extends StatelessWidget {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await prefs.setBool('gst_enabled', gstEnabled);
-                    await prefs.setBool('making_enabled', makingEnabled);
-                    await prefs.setBool('discount_enabled', discountEnabled);
+                    await prefs.setBool(StorageKeys.gstEnabled, gstEnabled);
+                    await prefs.setBool(
+                      StorageKeys.makingEnabled,
+                      makingEnabled,
+                    );
+                    await prefs.setBool(
+                      StorageKeys.discountEnabled,
+                      discountEnabled,
+                    );
                     SettingsButton.ratesVersion.value++;
                     if (context.mounted) {
                       Navigator.of(context).pop();

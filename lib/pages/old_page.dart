@@ -31,14 +31,6 @@ class _OldPageState extends State<OldPage> {
   late final VoidCallback _ratesListener;
 
   final List<String> _tanchOptions = [
-    '.99',
-    '.98',
-    '.97',
-    '.96',
-    '.95',
-    '.94',
-    '.93',
-    '.92',
     '.91',
     '.90',
     '.89',
@@ -81,19 +73,6 @@ class _OldPageState extends State<OldPage> {
     '.52',
     '.51',
     '.50',
-    '.49',
-    '.48',
-    '.47',
-    '.46',
-    '.45',
-    '.44',
-    '.43',
-    '.42',
-    '.41',
-    '.40',
-    '.39',
-    '.38',
-    '.37',
   ];
   final List<String> _returnBhavOptions = [
     'Gold24kt',
@@ -319,6 +298,47 @@ class _OldPageState extends State<OldPage> {
     _saveItems();
   }
 
+  Future<void> _clearAllItems() async {
+    if (_items.isEmpty) {
+      return;
+    }
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Clear all items?'),
+          content: const Text(
+            'This will remove all items from the old list.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldClear != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _items.clear();
+    });
+    _resetForm();
+    await _saveItems();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('All old items cleared')));
+  }
+
   Future<void> _saveItems() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _items.map((e) => jsonEncode(e.toJson())).toList();
@@ -457,8 +477,106 @@ class _OldPageState extends State<OldPage> {
     }
   }
 
+  Widget _sectionHeader(
+    BuildContext context,
+    String title, {
+    String? subtitle,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: subtitle == null ? 18 : 28,
+          decoration: BoxDecoration(
+            color: scheme.primary,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+              if (subtitle != null && subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricChip(BuildContext context, String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Text(
+        '$label $value',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryTile(BuildContext context, String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tanchEnabled = _usesTanch(_selectedReturnBhav);
     final totalGross = _items.fold<double>(
       0.0,
       (sum, item) => sum + item.grossWeight,
@@ -484,210 +602,279 @@ class _OldPageState extends State<OldPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 4,
-                      child: TextField(
-                        controller: _itemNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Item Name',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _selectedTanch,
-                        isExpanded: true,
-                        items: _tanchOptions
-                            .map(
-                              (p) => DropdownMenuItem<String>(
-                                value: p,
-                                child: Text(p),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _sectionHeader(
+                                context,
+                                'Old Item Entry',
+                                subtitle: _editingIndex == null
+                                    ? 'Add old purchase details'
+                                    : 'Editing item ${_editingIndex! + 1}',
                               ),
-                            )
-                            .toList(),
-                        onChanged: _usesTanch(_selectedReturnBhav)
-                            ? (value) {
-                                setState(() {
-                                  _selectedTanch = value;
-                                });
-                                _updateAmount();
-                              }
-                            : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Tanch',
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 14,
-                          ),
-                          border: OutlineInputBorder(),
+                            ),
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              onPressed: _items.isEmpty ? null : _clearAllItems,
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Clear All'),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _grossWeightController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Gross Weight',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _lessWeightController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        onTap: () {
-                          _lessWeightController.selection = TextSelection(
-                            baseOffset: 0,
-                            extentOffset: _lessWeightController.text.length,
-                          );
-                        },
-                        onChanged: (_) => _updateNetWeight(),
-                        onEditingComplete: () {
-                          final value =
-                              double.tryParse(
-                                _lessWeightController.text.trim(),
-                              ) ??
-                              0.0;
-                          _lessWeightController.text = value.toStringAsFixed(3);
-                          _lessWeightController.selection =
-                              TextSelection.collapsed(
-                                offset: _lessWeightController.text.length,
-                              );
-                          _updateNetWeight();
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Less Weight',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _autoNetWeightController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        readOnly: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Net Weight',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _selectedReturnBhav,
-                        isExpanded: true,
-                        items: _returnBhavOptions
-                            .map(
-                              (b) => DropdownMenuItem<String>(
-                                value: b,
-                                child: Text(
-                                  '$b ${_formatIndianForReturnBhav(b)}',
-                                  overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 4,
+                              child: TextField(
+                                controller: _itemNameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Item Name',
+                                  border: OutlineInputBorder(),
                                 ),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedReturnBhav = value;
-                            if (!_usesTanch(value)) {
-                              _selectedTanch = null;
-                            }
-                          });
-                          _updateAmount();
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Return Bhav',
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 14,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _selectedReturnBhav,
+                                isExpanded: true,
+                                items: _returnBhavOptions
+                                    .map(
+                                      (b) => DropdownMenuItem<String>(
+                                        value: b,
+                                        child: Text(
+                                          '$b ${_formatIndianForReturnBhav(b)}',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedReturnBhav = value;
+                                    if (!_usesTanch(value)) {
+                                      _selectedTanch = null;
+                                    }
+                                  });
+                                  _updateAmount();
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Return Bhav',
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _sectionHeader(
+                          context,
+                          'Weights',
+                          subtitle: 'Net weight is auto-calculated',
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _grossWeightController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Gross Weight',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _lessWeightController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onTap: () {
+                                  _lessWeightController.selection =
+                                      TextSelection(
+                                        baseOffset: 0,
+                                        extentOffset:
+                                            _lessWeightController.text.length,
+                                      );
+                                },
+                                onChanged: (_) => _updateNetWeight(),
+                                onEditingComplete: () {
+                                  final value =
+                                      double.tryParse(
+                                        _lessWeightController.text.trim(),
+                                      ) ??
+                                      0.0;
+                                  _lessWeightController.text = value
+                                      .toStringAsFixed(3);
+                                  _lessWeightController.selection =
+                                      TextSelection.collapsed(
+                                        offset: _lessWeightController
+                                            .text
+                                            .length,
+                                      );
+                                  _updateNetWeight();
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Less Weight',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _autoNetWeightController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Net Weight',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _selectedTanch,
+                                isExpanded: true,
+                                items: _tanchOptions
+                                    .map(
+                                      (p) => DropdownMenuItem<String>(
+                                        value: p,
+                                        child: Text(p),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: tanchEnabled
+                                    ? (value) {
+                                        setState(() {
+                                          _selectedTanch = value;
+                                        });
+                                        _updateAmount();
+                                      }
+                                    : null,
+                                decoration: const InputDecoration(
+                                  labelText: 'Tanch',
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _amountController,
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'Amount',
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          tanchEnabled
+                              ? 'Tanch is required for selected Return Bhav.'
+                              : 'Tanch is auto-disabled for Gold22kt/Gold18kt.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
                           ),
-                          border: OutlineInputBorder(),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 4,
-                      child: TextField(
-                        controller: _amountController,
-                        readOnly: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Amount',
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 14,
-                          ),
-                          border: OutlineInputBorder(),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _addOrUpdateItem,
+                                icon: Icon(
+                                  _editingIndex == null
+                                      ? Icons.add_circle_outline
+                                      : Icons.save_outlined,
+                                ),
+                                label: Text(
+                                  _editingIndex == null
+                                      ? 'Add Item'
+                                      : 'Update Item',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed: _resetForm,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reset'),
+                            ),
+                          ],
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _addOrUpdateItem,
-                        child: Text(
-                          _editingIndex == null ? 'Add Item' : 'Update Item',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: _resetForm,
-                      child: const Text('Reset'),
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 if (_items.isNotEmpty)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Items',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _sectionHeader(
+                              context,
+                              'Items (${_items.length})',
+                              subtitle:
+                                  'Total ${_formatIndianAmount(totalAmount)}',
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       ..._items.asMap().entries.map(
                         (entry) => Card(
-                          margin: const EdgeInsets.only(bottom: 12),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: BorderSide(color: scheme.outlineVariant),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -702,6 +889,7 @@ class _OldPageState extends State<OldPage> {
                                             : entry.value.itemName,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
+                                          fontSize: 15,
                                         ),
                                       ),
                                     ),
@@ -711,54 +899,67 @@ class _OldPageState extends State<OldPage> {
                                       textAlign: TextAlign.right,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.red,
+                                        color: Color(0xFFB91C1C),
                                       ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _metricChip(
+                                      context,
+                                      'Gross',
+                                      _formatWeight(entry.value.grossWeight),
+                                    ),
+                                    _metricChip(
+                                      context,
+                                      'Less',
+                                      _formatWeight(entry.value.lessWeight),
+                                    ),
+                                    _metricChip(
+                                      context,
+                                      'Net',
+                                      _formatWeight(entry.value.netWeight),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Gross ${_formatWeight(entry.value.grossWeight)}',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        'Less ${_formatWeight(entry.value.lessWeight)}',
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        'Net ${_formatWeight(entry.value.netWeight)}',
-                                        textAlign: TextAlign.right,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
                                 Text(
                                   'Return Bhav: ${entry.value.returnBhav ?? '-'} (${_oldItemFormulaRate(entry.value)})',
                                 ),
                                 const SizedBox(height: 4),
-                                RichText(
-                                  text: TextSpan(
-                                    style: DefaultTextStyle.of(context).style,
-                                    children: [
-                                      TextSpan(
-                                        text: _oldItemFormulaPrefix(
-                                          entry.value,
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerLow,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: RichText(
+                                    text: TextSpan(
+                                      style: DefaultTextStyle.of(context).style,
+                                      children: [
+                                        TextSpan(
+                                          text: _oldItemFormulaPrefix(
+                                            entry.value,
+                                          ),
                                         ),
-                                      ),
-                                      TextSpan(
-                                        text: _oldItemFormulaRate(entry.value),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
+                                        TextSpan(
+                                          text: _oldItemFormulaRate(
+                                            entry.value,
+                                          ),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -808,38 +1009,50 @@ class _OldPageState extends State<OldPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'Gross ${_formatWeight(totalGross)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.left,
+                    child: _summaryTile(
+                      context,
+                      'Gross',
+                      _formatWeight(totalGross),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Less ${_formatWeight(totalLess)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
+                    child: _summaryTile(
+                      context,
+                      'Less',
+                      _formatWeight(totalLess),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Net ${_formatWeight(totalNet)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
+                    child: _summaryTile(
+                      context,
+                      'Net',
+                      _formatWeight(totalNet),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Amount ${_formatIndianAmount(totalAmount)}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Amount ${_formatIndianAmount(totalAmount)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onPrimaryContainer,
+                    fontSize: 15,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
           ),

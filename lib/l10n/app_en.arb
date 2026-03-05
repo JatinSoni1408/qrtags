@@ -1,0 +1,56 @@
+{
+  "@@locale": "en",
+  "dueAmount": "Due Amount",
+  "refundAmount": "Refund Amount",
+  "transactionSettled": "Transaction Settled",
+  "hindiShort": "हिं",
+  "unableAnnounceAmount": "Unable to announce amount",
+  "ttsTransactionSettled": "Transaction settled.",
+  "ttsDueAmountIs": "Due amount is {amountWords}.",
+  "@ttsDueAmountIs": {
+    "placeholders": {
+      "amountWords": {}
+    }
+  },
+  "ttsRefundAmountIs": "Refund amount is {amountWords}.",
+  "@ttsRefundAmountIs": {
+    "placeholders": {
+      "amountWords": {}
+    }
+  },
+  "pdfInvoiceNo": "Invoice No",
+  "pdfBillDateTime": "Bill Date & Time",
+  "pdfCustomerDetails": "Customer Details",
+  "pdfCustomerName": "Customer Name",
+  "pdfCustomerMobile": "Customer Mobile",
+  "pdfQuickItemSummary": "Quick Item Summary",
+  "pdfCategoryWeightSummary": "Category Weight Summary",
+  "pdfItemWisePriceBreakup": "Item-wise Price Breakup",
+  "pdfSNo": "S.No",
+  "pdfItemName": "Item Name",
+  "pdfCategory": "Category",
+  "pdfGrossWt": "Gross Wt",
+  "pdfLessWt": "Less Wt",
+  "pdfNetWt": "Net Wt",
+  "pdfRate": "Rate",
+  "pdfMaking": "Making",
+  "pdfGst": "GST",
+  "pdfAdditional": "Additional",
+  "pdfTotal": "Total",
+  "pdfOldItemsDetails": "Old Items Details",
+  "pdfTotalsAndPaymentDetails": "Totals and Payment Details",
+  "pdfTotals": "Totals",
+  "pdfSubtotal": "Subtotal",
+  "pdfOldGoldDeduction": "Old Gold Deduction",
+  "pdfDiscount": "Discount",
+  "pdfGstTotal": "GST Total",
+  "pdfGrandTotalPayable": "Grand Total Payable",
+  "pdfPaymentDetails": "Payment Details",
+  "pdfTotalAmountReceived": "Total Amount Received",
+  "pdfTermsAndPolicies": "Terms & Policies",
+  "pdfPolicyLine1": "1. Exchange or buyback value is decided as per prevailing shop policy.",
+  "pdfPolicyLine2": "2. Please keep this bill for future exchange and service.",
+  "pdfSelectedItems": "Selected Items",
+  "pdfOldItems": "Old Items",
+  "pdfAdditionalTotal": "Additional Total"
+}

@@ -1,0 +1,56 @@
+{
+  "@@locale": "hi",
+  "dueAmount": "बकाया राशि",
+  "refundAmount": "वापसी राशि",
+  "transactionSettled": "लेनदेन पूरा हो गया है",
+  "hindiShort": "हिं",
+  "unableAnnounceAmount": "राशि सुनाई नहीं जा सकी",
+  "ttsTransactionSettled": "लेनदेन पूरा हो गया है।",
+  "ttsDueAmountIs": "बाकी राशि {amountWords} रुपये है।",
+  "@ttsDueAmountIs": {
+    "placeholders": {
+      "amountWords": {}
+    }
+  },
+  "ttsRefundAmountIs": "वापसी राशि {amountWords} रुपये है।",
+  "@ttsRefundAmountIs": {
+    "placeholders": {
+      "amountWords": {}
+    }
+  },
+  "pdfInvoiceNo": "इनवॉइस नं.",
+  "pdfBillDateTime": "बिल दिनांक व समय",
+  "pdfCustomerDetails": "ग्राहक विवरण",
+  "pdfCustomerName": "ग्राहक नाम",
+  "pdfCustomerMobile": "मोबाइल नंबर",
+  "pdfQuickItemSummary": "त्वरित आइटम सारांश",
+  "pdfCategoryWeightSummary": "श्रेणी वजन सारांश",
+  "pdfItemWisePriceBreakup": "आइटम अनुसार मूल्य विवरण",
+  "pdfSNo": "क्र.सं.",
+  "pdfItemName": "आइटम नाम",
+  "pdfCategory": "श्रेणी",
+  "pdfGrossWt": "ग्रॉस वज़न",
+  "pdfLessWt": "कम वज़न",
+  "pdfNetWt": "नेट वज़न",
+  "pdfRate": "रेट",
+  "pdfMaking": "मेकिंग",
+  "pdfGst": "जीएसटी",
+  "pdfAdditional": "अतिरिक्त",
+  "pdfTotal": "कुल",
+  "pdfOldItemsDetails": "पुराने आइटम विवरण",
+  "pdfTotalsAndPaymentDetails": "कुल और भुगतान विवरण",
+  "pdfTotals": "कुल",
+  "pdfSubtotal": "उप-योग",
+  "pdfOldGoldDeduction": "पुराना सोना कटौती",
+  "pdfDiscount": "छूट",
+  "pdfGstTotal": "जीएसटी कुल",
+  "pdfGrandTotalPayable": "देय कुल राशि",
+  "pdfPaymentDetails": "भुगतान विवरण",
+  "pdfTotalAmountReceived": "प्राप्त कुल राशि",
+  "pdfTermsAndPolicies": "नियम व शर्तें",
+  "pdfPolicyLine1": "1. एक्सचेंज या बायबैक मूल्य दुकान की वर्तमान नीति के अनुसार तय होगा।",
+  "pdfPolicyLine2": "2. कृपया भविष्य के एक्सचेंज और सेवा हेतु यह बिल संभालकर रखें।",
+  "pdfSelectedItems": "चयनित आइटम",
+  "pdfOldItems": "पुराने आइटम",
+  "pdfAdditionalTotal": "अतिरिक्त कुल"
+}
