@@ -52,7 +52,6 @@ class _ScanPageState extends State<ScanPage> {
   bool _globalGstEnabled = true;
   bool _makingEnabled = false;
   Timer? _recalcDebounceTimer;
-  _ScanSourceFilter _sourceFilter = _ScanSourceFilter.all;
   _ScanSortMode _sortMode = _ScanSortMode.newestFirst;
 
   @override
@@ -470,17 +469,6 @@ class _ScanPageState extends State<ScanPage> {
     await _recalculateTotals();
   }
 
-  bool _matchesSourceFilter(Map<String, dynamic>? parsed) {
-    if (_sourceFilter == _ScanSourceFilter.all) {
-      return true;
-    }
-    final isManual = parsed?['entrySource']?.toString() == 'manual';
-    if (_sourceFilter == _ScanSourceFilter.manualOnly) {
-      return isManual;
-    }
-    return !isManual;
-  }
-
   List<MapEntry<int, String>> _sortEntries(List<MapEntry<int, String>> list) {
     final sorted = List<MapEntry<int, String>>.from(list);
     switch (_sortMode) {
@@ -525,6 +513,7 @@ class _ScanPageState extends State<ScanPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Item removed'),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -637,83 +626,111 @@ class _ScanPageState extends State<ScanPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: _showManualCalculator,
-                        icon: const Icon(Icons.calculate),
-                        label: const Text('Manual Calculator'),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
                       ),
-                      const Spacer(),
-                      if (_scannedResults.isNotEmpty)
-                        TextButton(
-                          onPressed: _resetScannedItems,
-                          child: const Text('Reset'),
-                        ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<_ScanSourceFilter>(
-                          initialValue: _sourceFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Filter',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: _ScanSourceFilter.all,
-                              child: Text('All'),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primaryContainer,
+                              child: Icon(
+                                Icons.calculate_outlined,
+                                size: 20,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimaryContainer,
+                              ),
                             ),
-                            DropdownMenuItem(
-                              value: _ScanSourceFilter.manualOnly,
-                              child: Text('Manual'),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Manual Calculator',
+                                    style: Theme.of(context).textTheme.titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  Text(
+                                    'Add item manually when QR is not available',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            DropdownMenuItem(
-                              value: _ScanSourceFilter.qrOnly,
-                              child: Text('QR'),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: _showManualCalculator,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Open'),
                             ),
                           ],
-                          onChanged: (value) {
-                            if (value == null) {
-                              return;
-                            }
-                            setState(() {
-                              _sourceFilter = value;
-                            });
-                          },
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<_ScanSortMode>(
-                          initialValue: _sortMode,
-                          decoration: const InputDecoration(labelText: 'Sort'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: _ScanSortMode.newestFirst,
-                              child: Text('New ↑'),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<_ScanSortMode>(
+                                initialValue: _sortMode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Sort',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: _ScanSortMode.newestFirst,
+                                    child: Text('Newest First'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _ScanSortMode.oldestFirst,
+                                    child: Text('Oldest First'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _ScanSortMode.nameAsc,
+                                    child: Text('Name A-Z'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _sortMode = value;
+                                  });
+                                },
+                              ),
                             ),
-                            DropdownMenuItem(
-                              value: _ScanSortMode.oldestFirst,
-                              child: Text('New ↓'),
-                            ),
-                            DropdownMenuItem(
-                              value: _ScanSortMode.nameAsc,
-                              child: Text('Name A-Z'),
-                            ),
+                            if (_scannedResults.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: _resetScannedItems,
+                                icon: const Icon(Icons.restart_alt),
+                                label: const Text('Reset'),
+                              ),
+                            ],
                           ],
-                          onChanged: (value) {
-                            if (value == null) {
-                              return;
-                            }
-                            setState(() {
-                              _sortMode = value;
-                            });
-                          },
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   if (_scannedResults.isNotEmpty) ...[
                     ..._buildGroupedItems(),
@@ -791,9 +808,6 @@ class _ScanPageState extends State<ScanPage> {
     };
     for (final entry in _scannedResults.asMap().entries) {
       final parsed = _tryParseJson(entry.value);
-      if (!_matchesSourceFilter(parsed)) {
-        continue;
-      }
       final category = parsed?['category']?.toString() ?? '';
       if (category == 'Gold22kt') {
         groups['Gold22kt']!.add(entry);
@@ -1794,8 +1808,6 @@ class _ManualAdditionalEntryDraft {
   }
 }
 
-enum _ScanSourceFilter { all, manualOnly, qrOnly }
-
 enum _ScanSortMode { newestFirst, oldestFirst, nameAsc }
 
 class _ScanItemColors {
@@ -2295,3 +2307,5 @@ class _ScanResultCardState extends State<_ScanResultCard> {
     );
   }
 }
+
+
