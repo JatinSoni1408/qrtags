@@ -909,9 +909,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 return;
               }
             }
-            setState(() {
-              _selectedIndex = index;
-            });
+            _setTab(targetTab);
           },
         ),
       ),

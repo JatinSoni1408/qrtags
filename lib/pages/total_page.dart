@@ -76,8 +76,6 @@ class _TotalPageState extends State<TotalPage> {
   Uint8List? _cachedShreeHeaderBytes;
   bool _finishingTransaction = false;
   _TakeawayMode? _activeTakeawayMode;
-  bool _isSpeakingAmount = false;
-  bool _amountSpeechMuted = false;
 
   double _parseAmount(String value) {
     final cleaned = value.replaceAll(',', '').trim();
@@ -197,6 +195,7 @@ class _TotalPageState extends State<TotalPage> {
       _paymentEntries
         ..clear()
         ..add(_PaymentEntryDraft(date: DateTime.now(), mode: 'Cash'));
+      _discountController.clear();
     });
     unawaited(_saveDraft());
   }
@@ -460,13 +459,6 @@ class _TotalPageState extends State<TotalPage> {
               : 'Refund amount is $amountWordsEnglish.');
     try {
       await _flutterTts.stop();
-      await _flutterTts.setVolume(1.0);
-      if (mounted) {
-        setState(() {
-          _isSpeakingAmount = true;
-          _amountSpeechMuted = false;
-        });
-      }
       await _flutterTts.setLanguage(hindi ? 'hi-IN' : 'en-IN');
       await _flutterTts.setSpeechRate(0.55);
       await _flutterTts.setPitch(1.0);
@@ -478,42 +470,6 @@ class _TotalPageState extends State<TotalPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to announce amount')),
       );
-    } finally {
-      try {
-        await _flutterTts.setVolume(1.0);
-      } catch (_) {
-        // ignore
-      }
-      if (mounted) {
-        setState(() {
-          _isSpeakingAmount = false;
-          _amountSpeechMuted = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _muteCurrentAmountSpeech() async {
-    if (!_isSpeakingAmount) {
-      return;
-    }
-    try {
-      await _flutterTts.setVolume(0.0);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _amountSpeechMuted = true;
-      });
-    } catch (_) {
-      await _flutterTts.stop();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isSpeakingAmount = false;
-        _amountSpeechMuted = false;
-      });
     }
   }
 
@@ -751,7 +707,6 @@ class _TotalPageState extends State<TotalPage> {
     super.initState();
     _discountController.text = '';
     _paymentEntries.add(_PaymentEntryDraft(date: DateTime.now(), mode: 'Cash'));
-    unawaited(_flutterTts.awaitSpeakCompletion(true));
     unawaited(_loadDraft());
   }
 
@@ -2668,6 +2623,11 @@ class _TotalPageState extends State<TotalPage> {
                                   style: TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),
+                              OutlinedButton.icon(
+                                onPressed: _clearPaymentEntries,
+                                icon: const Icon(Icons.clear_all),
+                                label: const Text('Clear Entries'),
+                              ),
                             ],
                           ),
                           Text(
@@ -2820,24 +2780,10 @@ class _TotalPageState extends State<TotalPage> {
                             );
                           }),
                           const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _clearPaymentEntries,
-                                  icon: const Icon(Icons.clear_all),
-                                  label: const Text('Clear Entries'),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _addPaymentEntry,
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Add Entry'),
-                                ),
-                              ),
-                            ],
+                          OutlinedButton.icon(
+                            onPressed: _addPaymentEntry,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Entry'),
                           ),
                           const SizedBox(height: 4),
                           if (data.discountEnabled) ...[
@@ -2882,6 +2828,24 @@ class _TotalPageState extends State<TotalPage> {
                           ),
                           const SizedBox(height: 8),
                           Row(
+                            children: [
+                              OutlinedButton(
+                                onPressed: () => unawaited(
+                                  _speakDueAmount(diff: diff, hindi: false),
+                                ),
+                                child: const Text('EN'),
+                              ),
+                              const SizedBox(width: 6),
+                              OutlinedButton(
+                                onPressed: () => unawaited(
+                                  _speakDueAmount(diff: diff, hindi: true),
+                                ),
+                                child: const Text('हिं'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Expanded(
@@ -2903,34 +2867,6 @@ class _TotalPageState extends State<TotalPage> {
                                           fontWeight: FontWeight.w800,
                                           textAlign: TextAlign.center,
                                         ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              OutlinedButton(
-                                onPressed: () => unawaited(
-                                  _speakDueAmount(diff: diff, hindi: false),
-                                ),
-                                child: const Text('EN'),
-                              ),
-                              const SizedBox(width: 6),
-                              OutlinedButton(
-                                onPressed: () => unawaited(
-                                  _speakDueAmount(diff: diff, hindi: true),
-                                ),
-                                child: const Text('हिं'),
-                              ),
-                              const SizedBox(width: 6),
-                              OutlinedButton.icon(
-                                onPressed: _isSpeakingAmount
-                                    ? () => unawaited(_muteCurrentAmountSpeech())
-                                    : null,
-                                icon: Icon(
-                                  _amountSpeechMuted
-                                      ? Icons.volume_off
-                                      : Icons.volume_mute,
-                                ),
-                                label: Text(
-                                  _amountSpeechMuted ? 'Muted' : 'Mute',
                                 ),
                               ),
                             ],
@@ -3701,4 +3637,3 @@ class _FormulaText extends StatelessWidget {
     );
   }
 }
-
