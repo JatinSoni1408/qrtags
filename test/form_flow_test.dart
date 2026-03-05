@@ -131,8 +131,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Manual Calculator'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
 
-    await tester.tap(find.text('Manual Calculator'));
+    await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
 
     await tester.tap(
