@@ -45,6 +45,7 @@ class _GeneratePageState extends State<GeneratePage> {
   static const String _lastMakingTypeKey = 'last_required_making_type';
   static const String _lastMakingChargeKey = 'last_required_making_charge';
   static const String _recentItemNameKey = 'recent_item_name';
+  static const String _huidCheckedKey = 'huid_checked';
   static const String _itemNamesKey = 'item_names';
   static const String _categoriesKey = 'categories';
   static const String _makingTypesGoldKey = 'making_types_gold';
@@ -67,6 +68,7 @@ class _GeneratePageState extends State<GeneratePage> {
   bool _searchable = false;
   bool _crud = false;
   bool _persistence = false;
+  bool _isHuidChecked = false;
 
   final List<String> _defaultCategories = ['Gold22kt', 'Gold18kt', 'Silver'];
   final List<String> _categories = [];
@@ -942,8 +944,20 @@ class _GeneratePageState extends State<GeneratePage> {
         _makingChargeController.text = prefs.getString('making_charge') ?? '';
         _searchable = prefs.getBool('searchable') ?? false;
         _crud = prefs.getBool('crud') ?? false;
+        _isHuidChecked = prefs.getBool(_huidCheckedKey) ?? false;
       }
     });
+  }
+
+  bool _isHuidMandatoryValue(dynamic raw) {
+    if (raw is bool) {
+      return raw;
+    }
+    final text = raw?.toString().trim().toLowerCase() ?? '';
+    if (text.isEmpty) {
+      return false;
+    }
+    return text != 'false' && text != '0' && text != 'no' && text != 'off';
   }
 
   void _updateWeights() {
@@ -1073,6 +1087,7 @@ class _GeneratePageState extends State<GeneratePage> {
       _additionalEntries
         ..clear()
         ..add(_AdditionalEntry());
+      _isHuidChecked = false;
       _qrData = null;
       _editingTagId = null;
       _editingOriginalData = null;
@@ -1135,6 +1150,7 @@ class _GeneratePageState extends State<GeneratePage> {
       'grossWeight': _grossWeightController.text,
       'lessWeight': _lessWeightController.text,
       'netWeight': _netWeightController.text,
+      'huid': _isHuidChecked,
       'lessCategories': lessEntries,
       'additionalTypes': additionalEntries,
     };
@@ -1209,6 +1225,7 @@ class _GeneratePageState extends State<GeneratePage> {
       _grossWeightController.text = tag.grossWeight;
       _lessWeightController.text = tag.lessWeight;
       _netWeightController.text = tag.netWeight;
+      _isHuidChecked = _isHuidMandatoryValue(data['huid']);
 
       for (final entry in _lessCategoryEntries) {
         entry.dispose();
@@ -1392,6 +1409,7 @@ class _GeneratePageState extends State<GeneratePage> {
         await prefs.remove('making_type');
       }
       await prefs.setString('making_charge', _makingChargeController.text);
+      await prefs.setBool(_huidCheckedKey, _isHuidChecked);
       await prefs.setBool('searchable', _searchable);
       await prefs.setBool('crud', _crud);
       await prefs.setBool('persistence', _persistence);
@@ -1400,6 +1418,7 @@ class _GeneratePageState extends State<GeneratePage> {
       await prefs.remove('item_name');
       await prefs.remove('making_type');
       await prefs.remove('making_charge');
+      await prefs.remove(_huidCheckedKey);
       await prefs.remove('searchable');
       await prefs.remove('crud');
       await prefs.setBool('persistence', false);
@@ -2608,6 +2627,25 @@ class _GeneratePageState extends State<GeneratePage> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  value: _isHuidChecked,
+                  onChanged: (value) {
+                    setState(() {
+                      _isHuidChecked = value ?? false;
+                    });
+                    _saveIfNeeded();
+                  },
+                ),
+                const Text('HUID'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           SharedItemFormLayout(
             primarySection: Row(
               children: [

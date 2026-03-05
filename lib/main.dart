@@ -448,7 +448,7 @@ class _AuthGateState extends State<_AuthGate> {
     } catch (_) {
       return 'staff';
     }
-  }
+  } 
 
   void _queueTagMigrationIfNeeded(String role) {
     if (role.toLowerCase() != 'admin' || _tagMigrationQueued) {

@@ -299,6 +299,21 @@ class _ScanPageState extends State<ScanPage> {
     return null;
   }
 
+  bool _hasHuid(Map<String, dynamic> data) {
+    final raw = data['huid'];
+    if (raw is bool) {
+      return raw;
+    }
+    final normalized = raw?.toString().trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return normalized != 'false' &&
+        normalized != '0' &&
+        normalized != 'no' &&
+        normalized != 'off';
+  }
+
   String _payloadIdentity(String payload) {
     final raw = payload.trim();
     if (raw.startsWith('QR1:')) {
@@ -317,6 +332,8 @@ class _ScanPageState extends State<ScanPage> {
 
   void _upsertScannedPayload(String payload) {
     final identity = _payloadIdentity(payload);
+    final parsed = _tryParseJson(payload);
+    final huidMandatory = parsed != null ? _hasHuid(parsed) : false;
     bool gstEnabled = true;
     for (int i = _scannedResults.length - 1; i >= 0; i--) {
       if (_payloadIdentity(_scannedResults[i]) == identity) {
@@ -328,7 +345,7 @@ class _ScanPageState extends State<ScanPage> {
       }
     }
     _scannedResults.insert(0, payload);
-    _gstEnabledByItem.insert(0, gstEnabled);
+    _gstEnabledByItem.insert(0, huidMandatory ? true : gstEnabled);
   }
 
   Future<void> _handleScannedBatch(List<String> payloads) async {
@@ -363,9 +380,12 @@ class _ScanPageState extends State<ScanPage> {
         continue;
       }
       final category = parsed['category']?.toString() ?? '';
-      final gstEnabled = _globalGstEnabled
-          ? (i < _gstEnabledByItem.length ? _gstEnabledByItem[i] : true)
-          : true;
+      final huidMandatory = _hasHuid(parsed);
+      final gstEnabled = huidMandatory
+          ? true
+          : (_globalGstEnabled
+                ? (i < _gstEnabledByItem.length ? _gstEnabledByItem[i] : true)
+                : true);
       final breakdown = await PriceCalculator.calculateBreakdown(
         parsed,
         gstEnabledOverride: gstEnabled,
@@ -410,6 +430,17 @@ class _ScanPageState extends State<ScanPage> {
       _gstEnabledByItem
         ..clear()
         ..addAll(saved.gstEnabledFlags);
+      for (int i = 0; i < _scannedResults.length; i++) {
+        final parsed = _tryParseJson(_scannedResults[i]);
+        if (parsed == null || !_hasHuid(parsed)) {
+          continue;
+        }
+        if (i < _gstEnabledByItem.length) {
+          _gstEnabledByItem[i] = true;
+        } else {
+          _gstEnabledByItem.add(true);
+        }
+      }
     });
     await _recalculateTotals();
   }
@@ -801,6 +832,14 @@ class _ScanPageState extends State<ScanPage> {
           final index = entry.key;
           final value = entry.value;
           final itemParsed = _tryParseJson(value);
+          final huidMandatory = itemParsed != null
+              ? _hasHuid(itemParsed)
+              : false;
+          final itemGstEnabled = huidMandatory
+              ? true
+              : (_gstEnabledByItem.length > index
+                    ? _gstEnabledByItem[index]
+                    : true);
           final isManualEntry =
               itemParsed?['entrySource']?.toString() == 'manual';
           final colors = _scanItemColors(context, itemParsed);
@@ -818,16 +857,14 @@ class _ScanPageState extends State<ScanPage> {
                             headingBgColor: colors.headingBgColor,
                             headingTextColor: colors.headingTextColor,
                             amountTextColor: colors.amountTextColor,
-                            gstEnabled: _gstEnabledByItem.length > index
-                                ? _gstEnabledByItem[index]
-                                : true,
-                            canEditGst: _globalGstEnabled,
+                            gstEnabled: itemGstEnabled,
+                            canEditGst: _globalGstEnabled && !huidMandatory,
                             canEditMaking: _makingEnabled,
                             onMakingChanged: (value) {
                               _updateMakingCharge(index, value);
                             },
                             onGstChanged: (enabled) {
-                              if (!_globalGstEnabled) {
+                              if (!_globalGstEnabled || huidMandatory) {
                                 return;
                               }
                               setState(() {

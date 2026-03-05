@@ -104,8 +104,18 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   bool _hasHuid(Map<String, dynamic> data) {
-    final v = data['huid']?.toString().trim() ?? '';
-    return v.isNotEmpty;
+    final raw = data['huid'];
+    if (raw is bool) {
+      return raw;
+    }
+    final normalized = raw?.toString().trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return normalized != 'false' &&
+        normalized != '0' &&
+        normalized != 'no' &&
+        normalized != 'off';
   }
 
   Map<String, dynamic>? _tryParseJson(String value) {

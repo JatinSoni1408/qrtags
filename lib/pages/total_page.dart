@@ -1,24 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show FilteringTextInputFormatter, LengthLimitingTextInputFormatter;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../utils/sales_notifier.dart';
 import '../features/total/payment_entry_calculator.dart';
-import '../features/total/total_customer_validator.dart';
 import '../utils/price_calculator.dart';
 import '../utils/share_file_namer.dart';
+
+enum _TakeawayMode { maxItems, maxWeight }
 
 class TotalPage extends StatefulWidget {
   const TotalPage({super.key});
@@ -29,12 +27,11 @@ class TotalPage extends StatefulWidget {
 
 class _TotalPageState extends State<TotalPage> {
   static const String _oldItemsKey = 'old_items';
-  static const String _draftCustomerNameKey = 'total_draft_customer_name';
-  static const String _draftCustomerMobileKey = 'total_draft_customer_mobile';
   static const String _draftDiscountKey = 'total_draft_discount';
   static const String _draftPaymentEntriesKey = 'total_draft_payment_entries';
   static const String _upiQrBase =
       'upi://pay?mode=02&pa=Q596211014@ybl&purpose=00&mc=0000&pn=PhonePeMerchant&orgid=180001';
+  static final PdfPageFormat _billPageFormat = PdfPageFormat.a4;
   static const List<_QrCenterBadgeStyle> _qrCenterBadgeOptions = [
     _QrCenterBadgeStyle(
       icon: Icons.cruelty_free,
@@ -74,26 +71,13 @@ class _TotalPageState extends State<TotalPage> {
   ];
 
   final TextEditingController _discountController = TextEditingController();
-  final TextEditingController _customerNameController = TextEditingController();
-  final TextEditingController _customerMobileController =
-      TextEditingController();
   final List<_PaymentEntryDraft> _paymentEntries = <_PaymentEntryDraft>[];
+  final FlutterTts _flutterTts = FlutterTts();
   Uint8List? _cachedShreeHeaderBytes;
   bool _finishingTransaction = false;
-
-  String? _mobileInputError(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    if (trimmed.length != 10) {
-      return 'Enter 10-digit mobile number';
-    }
-    if (!RegExp(r'^[6-9][0-9]{9}$').hasMatch(trimmed)) {
-      return 'Must start with 6, 7, 8, or 9';
-    }
-    return null;
-  }
+  _TakeawayMode? _activeTakeawayMode;
+  bool _isSpeakingAmount = false;
+  bool _amountSpeechMuted = false;
 
   double _parseAmount(String value) {
     final cleaned = value.replaceAll(',', '').trim();
@@ -205,6 +189,18 @@ class _TotalPageState extends State<TotalPage> {
     unawaited(_saveDraft());
   }
 
+  void _clearPaymentEntries() {
+    setState(() {
+      for (final entry in _paymentEntries) {
+        entry.dispose();
+      }
+      _paymentEntries
+        ..clear()
+        ..add(_PaymentEntryDraft(date: DateTime.now(), mode: 'Cash'));
+    });
+    unawaited(_saveDraft());
+  }
+
   Future<void> _saveDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -215,14 +211,6 @@ class _TotalPageState extends State<TotalPage> {
           'amount': entry.amountController.text,
         });
       }).toList();
-      await prefs.setString(
-        _draftCustomerNameKey,
-        _customerNameController.text,
-      );
-      await prefs.setString(
-        _draftCustomerMobileKey,
-        _customerMobileController.text,
-      );
       await prefs.setString(_draftDiscountKey, _discountController.text);
       await prefs.setStringList(_draftPaymentEntriesKey, encodedEntries);
     } catch (_) {
@@ -233,8 +221,6 @@ class _TotalPageState extends State<TotalPage> {
   Future<void> _clearDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_draftCustomerNameKey);
-      await prefs.remove(_draftCustomerMobileKey);
       await prefs.remove(_draftDiscountKey);
       await prefs.remove(_draftPaymentEntriesKey);
     } catch (_) {
@@ -242,53 +228,9 @@ class _TotalPageState extends State<TotalPage> {
     }
   }
 
-  Future<void> _clearDraftAndResetForm() async {
-    final shouldClear = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Clear Draft'),
-          content: const Text(
-            'This will remove saved draft data and reset the form. Continue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Clear'),
-            ),
-          ],
-        );
-      },
-    );
-    if (shouldClear != true) {
-      return;
-    }
-    await _clearDraft();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _customerNameController.clear();
-      _customerMobileController.clear();
-      _discountController.clear();
-      for (final entry in _paymentEntries) {
-        entry.dispose();
-      }
-      _paymentEntries
-        ..clear()
-        ..add(_PaymentEntryDraft(date: DateTime.now(), mode: 'Cash'));
-    });
-  }
-
   Future<void> _loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final customerName = prefs.getString(_draftCustomerNameKey) ?? '';
-      final customerMobile = prefs.getString(_draftCustomerMobileKey) ?? '';
       final discount = prefs.getString(_draftDiscountKey) ?? '';
       final entryRaw = prefs.getStringList(_draftPaymentEntriesKey) ?? [];
       final loadedEntries = <_PaymentEntryDraft>[];
@@ -320,8 +262,6 @@ class _TotalPageState extends State<TotalPage> {
         return;
       }
       setState(() {
-        _customerNameController.text = customerName;
-        _customerMobileController.text = customerMobile;
         _discountController.text = discount;
         for (final entry in _paymentEntries) {
           entry.dispose();
@@ -408,24 +348,420 @@ class _TotalPageState extends State<TotalPage> {
     }
   }
 
+  String _twoDigitWord(int value) {
+    const underTwenty = <String>[
+      'zero',
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'seven',
+      'eight',
+      'nine',
+      'ten',
+      'eleven',
+      'twelve',
+      'thirteen',
+      'fourteen',
+      'fifteen',
+      'sixteen',
+      'seventeen',
+      'eighteen',
+      'nineteen',
+    ];
+    const tens = <String>[
+      '',
+      '',
+      'twenty',
+      'thirty',
+      'forty',
+      'fifty',
+      'sixty',
+      'seventy',
+      'eighty',
+      'ninety',
+    ];
+    if (value < 20) {
+      return underTwenty[value];
+    }
+    final ten = value ~/ 10;
+    final unit = value % 10;
+    if (unit == 0) {
+      return tens[ten];
+    }
+    return '${tens[ten]} ${underTwenty[unit]}';
+  }
+
+  String _threeDigitWord(int value) {
+    if (value <= 0) {
+      return '';
+    }
+    final hundred = value ~/ 100;
+    final rem = value % 100;
+    if (hundred == 0) {
+      return _twoDigitWord(rem);
+    }
+    if (rem == 0) {
+      return '${_twoDigitWord(hundred)} hundred';
+    }
+    return '${_twoDigitWord(hundred)} hundred and ${_twoDigitWord(rem)}';
+  }
+
+  String _numberToIndianWords(int value) {
+    if (value <= 0) {
+      return 'zero';
+    }
+    final parts = <String>[];
+    int remaining = value;
+
+    final crore = remaining ~/ 10000000;
+    remaining %= 10000000;
+    if (crore > 0) {
+      parts.add('${_threeDigitWord(crore)} crore');
+    }
+
+    final lakh = remaining ~/ 100000;
+    remaining %= 100000;
+    if (lakh > 0) {
+      parts.add('${_threeDigitWord(lakh)} lakh');
+    }
+
+    final thousand = remaining ~/ 1000;
+    remaining %= 1000;
+    if (thousand > 0) {
+      parts.add('${_threeDigitWord(thousand)} thousand');
+    }
+
+    if (remaining > 0) {
+      parts.add(_threeDigitWord(remaining));
+    }
+
+    return parts.join(' ').trim();
+  }
+
+  Future<void> _speakDueAmount({
+    required double diff,
+    required bool hindi,
+  }) async {
+    final normalized = _normalizeMoneyDelta(diff);
+    final wholeRupees = normalized.abs().floor();
+    final amountText = wholeRupees.toString();
+    final amountWordsEnglish = _numberToIndianWords(wholeRupees);
+    final text = normalized == 0
+        ? (hindi ? 'लेनदेन पूरा हो गया है।' : 'Transaction settled.')
+        : normalized > 0
+        ? (hindi
+              ? 'बाकी राशि $amountText रुपये है।'
+              : 'Due amount is $amountWordsEnglish.')
+        : (hindi
+              ? 'वापसी राशि $amountText रुपये है।'
+              : 'Refund amount is $amountWordsEnglish.');
+    try {
+      await _flutterTts.stop();
+      await _flutterTts.setVolume(1.0);
+      if (mounted) {
+        setState(() {
+          _isSpeakingAmount = true;
+          _amountSpeechMuted = false;
+        });
+      }
+      await _flutterTts.setLanguage(hindi ? 'hi-IN' : 'en-IN');
+      await _flutterTts.setSpeechRate(0.55);
+      await _flutterTts.setPitch(1.0);
+      await _flutterTts.speak(text);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to announce amount')),
+      );
+    } finally {
+      try {
+        await _flutterTts.setVolume(1.0);
+      } catch (_) {
+        // ignore
+      }
+      if (mounted) {
+        setState(() {
+          _isSpeakingAmount = false;
+          _amountSpeechMuted = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _muteCurrentAmountSpeech() async {
+    if (!_isSpeakingAmount) {
+      return;
+    }
+    try {
+      await _flutterTts.setVolume(0.0);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _amountSpeechMuted = true;
+      });
+    } catch (_) {
+      await _flutterTts.stop();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSpeakingAmount = false;
+        _amountSpeechMuted = false;
+      });
+    }
+  }
+
+  bool _isBetterTakeawayState(
+    _KnapsackState candidate,
+    _KnapsackState current,
+    _TakeawayMode mode,
+  ) {
+    if (mode == _TakeawayMode.maxWeight) {
+      if (candidate.weightMilliGrams != current.weightMilliGrams) {
+        return candidate.weightMilliGrams > current.weightMilliGrams;
+      }
+      if (candidate.count != current.count) {
+        return candidate.count > current.count;
+      }
+      return candidate.spentAmount < current.spentAmount;
+    }
+    if (candidate.count != current.count) {
+      return candidate.count > current.count;
+    }
+    if (candidate.weightMilliGrams != current.weightMilliGrams) {
+      return candidate.weightMilliGrams > current.weightMilliGrams;
+    }
+    return candidate.spentAmount < current.spentAmount;
+  }
+
+  _TakeawaySuggestion? _computeTakeawaySuggestion({
+    required List<_SelectedItemView> items,
+    required double budget,
+    required _TakeawayMode mode,
+  }) {
+    if (budget <= 0 || items.isEmpty) {
+      return null;
+    }
+
+    const maxBudgetUnits = 60000;
+    final unit = math.max(1, (budget / maxBudgetUnits).ceil());
+    final budgetUnits = (budget / unit).floor();
+    if (budgetUnits <= 0) {
+      return null;
+    }
+
+    final candidateItemIndexes = <int>[];
+    final candidateCostUnits = <int>[];
+    final candidateWeightsMilli = <int>[];
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      final amount = item.amount;
+      if (amount <= 0 || amount > budget + 0.0001) {
+        continue;
+      }
+      final costUnits = (amount / unit).ceil();
+      if (costUnits <= 0 || costUnits > budgetUnits) {
+        continue;
+      }
+      candidateItemIndexes.add(i);
+      candidateCostUnits.add(costUnits);
+      candidateWeightsMilli.add((item.weightValue * 1000).round());
+    }
+
+    if (candidateItemIndexes.isEmpty) {
+      return null;
+    }
+
+    final dp = List<_KnapsackState?>.filled(budgetUnits + 1, null);
+    dp[0] = const _KnapsackState(
+      count: 0,
+      weightMilliGrams: 0,
+      spentAmount: 0,
+      itemIndex: null,
+      previous: null,
+    );
+
+    for (int i = 0; i < candidateItemIndexes.length; i++) {
+      final itemIndex = candidateItemIndexes[i];
+      final item = items[itemIndex];
+      final costUnits = candidateCostUnits[i];
+      final weightMilli = candidateWeightsMilli[i];
+
+      for (int spend = budgetUnits; spend >= costUnits; spend--) {
+        final previous = dp[spend - costUnits];
+        if (previous == null) {
+          continue;
+        }
+        final candidateSpend = previous.spentAmount + item.amount;
+        if (candidateSpend > budget + 0.0001) {
+          continue;
+        }
+        final candidate = _KnapsackState(
+          count: previous.count + 1,
+          weightMilliGrams: previous.weightMilliGrams + weightMilli,
+          spentAmount: candidateSpend,
+          itemIndex: itemIndex,
+          previous: previous,
+        );
+        final current = dp[spend];
+        if (current == null || _isBetterTakeawayState(candidate, current, mode)) {
+          dp[spend] = candidate;
+        }
+      }
+    }
+
+    _KnapsackState? best;
+    for (final state in dp) {
+      if (state == null || state.count == 0) {
+        continue;
+      }
+      if (best == null || _isBetterTakeawayState(state, best, mode)) {
+        best = state;
+      }
+    }
+    if (best == null) {
+      return null;
+    }
+
+    final selectedIndexes = <int>[];
+    _KnapsackState? cursor = best;
+    while (cursor != null && cursor.itemIndex != null) {
+      selectedIndexes.add(cursor.itemIndex!);
+      cursor = cursor.previous;
+    }
+    final selectedItems = selectedIndexes.reversed
+        .map((index) => items[index])
+        .toList();
+
+    return _TakeawaySuggestion(
+      mode: mode,
+      budget: budget,
+      selectedItems: selectedItems,
+      totalAmount: best.spentAmount,
+      totalWeight: best.weightMilliGrams / 1000.0,
+      budgetUnit: unit,
+    );
+  }
+
+  Widget _buildTakeawaySuggestionPanel({
+    required List<_SelectedItemView> items,
+    required double budget,
+    required ThemeData theme,
+  }) {
+    if (_activeTakeawayMode == null) {
+      return const SizedBox.shrink();
+    }
+    if (budget <= 0) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Enter payment amounts first to suggest takeaway items.',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+    final suggestion = _computeTakeawaySuggestion(
+      items: items,
+      budget: budget,
+      mode: _activeTakeawayMode!,
+    );
+    if (suggestion == null || suggestion.selectedItems.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'No scanned item fits within the received amount.',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(top: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              suggestion.mode == _TakeawayMode.maxItems
+                  ? 'Suggested for Max Items'
+                  : 'Suggested for Max Weight',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Items: ${suggestion.selectedItems.length} | '
+              'Weight: ${suggestion.totalWeight.toStringAsFixed(3)} g | '
+              'Amount: ${PriceCalculator.formatIndianAmount(suggestion.totalAmount)}',
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Leftover: ${PriceCalculator.formatIndianAmount(suggestion.leftover)}',
+            ),
+            if (suggestion.budgetUnit > 1)
+              Text(
+                'Optimizer step size: ₹${suggestion.budgetUnit}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            const Divider(height: 16),
+            ...suggestion.selectedItems.map((item) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.category.isNotEmpty
+                            ? '${item.title} (${item.category})'
+                            : item.title,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${item.weightValue.toStringAsFixed(3)} g',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      PriceCalculator.formatIndianAmount(item.amount),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _discountController.text = '';
-    _customerNameController.text = '';
-    _customerMobileController.text = '';
     _paymentEntries.add(_PaymentEntryDraft(date: DateTime.now(), mode: 'Cash'));
+    unawaited(_flutterTts.awaitSpeakCompletion(true));
     unawaited(_loadDraft());
   }
 
   @override
   void dispose() {
+    unawaited(_flutterTts.stop());
     for (final entry in _paymentEntries) {
       entry.dispose();
     }
     _discountController.dispose();
-    _customerNameController.dispose();
-    _customerMobileController.dispose();
     super.dispose();
   }
 
@@ -958,10 +1294,7 @@ class _TotalPageState extends State<TotalPage> {
     }
 
     String formatReturnBhavText(String? option, double value) {
-      if (option == 'Silver') {
-        return PriceCalculator.formatIndianAmount(value);
-      }
-      return value.toStringAsFixed(0);
+      return PriceCalculator.formatIndianAmount(value);
     }
 
     String selectedIdentity(String raw) {
@@ -1016,9 +1349,7 @@ class _TotalPageState extends State<TotalPage> {
       final netWeight = netWeightValue.toStringAsFixed(3);
       final makingCharge = parseNum(parsed['makingCharge']?.toString() ?? '0');
       final bhav = getBhav(category);
-      final bhavText = (category == 'Gold22kt' || category == 'Gold18kt')
-          ? bhav.toStringAsFixed(0)
-          : PriceCalculator.formatIndianAmount(bhav);
+      final bhavText = PriceCalculator.formatIndianAmount(bhav);
       final additionalValues = collectAdditionals(parsed);
       final additionalTotal = additionalValues.fold<double>(
         0.0,
@@ -1203,8 +1534,10 @@ class _TotalPageState extends State<TotalPage> {
     List<_PaymentEntryPdfRow> paymentEntries,
     String customerName,
     String customerMobile,
+    PdfPageFormat? pageFormat,
   ) async {
     final doc = pw.Document();
+    final effectivePageFormat = pageFormat ?? _billPageFormat;
     String tr(String english, String hindi) => english;
     final now = DateTime.now();
     final netPayable = data.selectedTotal - data.oldTotal - discount;
@@ -1250,7 +1583,7 @@ class _TotalPageState extends State<TotalPage> {
       );
     }
 
-    pw.Widget keyValue(String label, String value, {bool emphasize = false}) {
+    pw.Widget keyValueWidget(String label, pw.Widget valueWidget) {
       return pw.Container(
         margin: const pw.EdgeInsets.only(bottom: 3),
         child: pw.Row(
@@ -1260,18 +1593,25 @@ class _TotalPageState extends State<TotalPage> {
             pw.SizedBox(width: 8),
             pw.Expanded(
               flex: 4,
-              child: pw.Text(
-                value,
-                textAlign: pw.TextAlign.right,
-                style: emphasize
-                    ? pw.TextStyle(
-                        fontSize: 10.3,
-                        fontWeight: pw.FontWeight.bold,
-                      )
-                    : valueStyle,
+              child: pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: valueWidget,
               ),
             ),
           ],
+        ),
+      );
+    }
+
+    pw.Widget keyValue(String label, String value, {bool emphasize = false}) {
+      return keyValueWidget(
+        label,
+        pw.Text(
+          value,
+          textAlign: pw.TextAlign.right,
+          style: emphasize
+              ? pw.TextStyle(fontSize: 10.3, fontWeight: pw.FontWeight.bold)
+              : valueStyle,
         ),
       );
     }
@@ -1288,9 +1628,6 @@ class _TotalPageState extends State<TotalPage> {
     }
 
     String formatRateText(_SelectedItemView item) {
-      if (item.category.startsWith('Gold')) {
-        return item.rate.toStringAsFixed(0);
-      }
       return PriceCalculator.formatIndianAmount(item.rate);
     }
 
@@ -1365,6 +1702,7 @@ class _TotalPageState extends State<TotalPage> {
       if (orderedCategories.isNotEmpty)
         pw.Table(
           border: const pw.TableBorder(
+            bottom: pw.BorderSide(color: PdfColors.black, width: 1.1),
             verticalInside: pw.BorderSide(color: PdfColors.grey500, width: 0.4),
             horizontalInside: pw.BorderSide(
               color: PdfColors.grey500,
@@ -1522,351 +1860,443 @@ class _TotalPageState extends State<TotalPage> {
 
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(24),
+        pageFormat: effectivePageFormat,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 16),
         build: (context) {
-          return pw.FittedBox(
-            fit: pw.BoxFit.scaleDown,
-            alignment: pw.Alignment.topCenter,
-            child: pw.SizedBox(
-              width: PdfPageFormat.a4.width - 48,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                children: [
-                  pw.Center(
-                    child: shreeHeaderImage == null
-                        ? pw.Text(
-                            'Shree',
-                            style: pw.TextStyle(
-                              fontSize: 5,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          )
-                        : pw.Image(
-                            shreeHeaderImage,
-                            width: 35,
-                            fit: pw.BoxFit.contain,
-                          ),
-                  ),
-                  pw.SizedBox(height: 8),
-                  borderedBlock([
-                    pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.RichText(
-                                text: pw.TextSpan(
-                                  children: [
-                                    pw.TextSpan(
-                                      text: 'ESTIMATED ',
-                                      style: sectionStyle.copyWith(
-                                        fontWeight: pw.FontWeight.bold,
-                                        fontSize: 12.2,
-                                      ),
-                                    ),
-                                    pw.TextSpan(
-                                      text: 'Details',
-                                      style: sectionStyle,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              pw.SizedBox(height: 6),
-                              keyValue(tr('Invoice No', 'इनवॉइस नं.'), invoiceNo),
-                              keyValue(
-                                tr('Bill Date & Time', 'बिल दिनांक व समय'),
-                                '$billDate $billTime',
-                              ),
-                            ],
-                          ),
-                        ),
-                        pw.SizedBox(width: 16),
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(
-                                tr('Customer Details', 'ग्राहक विवरण'),
-                                style: sectionStyle,
-                              ),
-                              pw.SizedBox(height: 6),
-                              keyValue(
-                                tr('Customer Name', 'ग्राहक नाम'),
-                                customerName.isEmpty ? '-' : customerName,
-                              ),
-                              keyValue(
-                                tr('Customer Mobile', 'मोबाइल नंबर'),
-                                customerMobile.isEmpty ? '-' : customerMobile,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]),
-                  pw.SizedBox(height: 8),
-                  borderedBlock([
-                    pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(
-                                tr('Quick Item Summary', 'त्वरित आइटम सारांश'),
-                                style: sectionStyle,
-                              ),
-                              pw.SizedBox(height: 6),
-                              ...amountSummaryRows,
-                            ],
-                          ),
-                        ),
-                        pw.SizedBox(width: 16),
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(
-                                tr('Category Weight Summary', 'श्रेणी वजन सारांश'),
-                                style: sectionStyle,
-                              ),
-                              pw.SizedBox(height: 6),
-                              ...categoryWeightRows,
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]),
-                  if (data.selectedItems.isNotEmpty) ...[
-                    sectionTitle(
-                      tr('Item-wise Price Breakup', 'आइटम अनुसार मूल्य विवरण'),
-                    ),
-                    pw.TableHelper.fromTextArray(
-                      headers: <String>[
-                        tr('S.No', 'क्र.सं.'),
-                        tr('Item Name', 'आइटम नाम'),
-                        tr('Category', 'श्रेणी'),
-                        tr('Gross Wt', 'ग्रॉस वज़न'),
-                        tr('Less Wt', 'कम वज़न'),
-                        tr('Net Wt', 'नेट वज़न'),
-                        tr('Rate', 'रेट'),
-                        tr('Making', 'मेकिंग'),
-                        tr('GST', 'जीएसटी'),
-                        tr('Additional', 'अतिरिक्त'),
-                        tr('Total', 'कुल'),
-                      ].map((text) {
-                        return pw.Center(
-                          child: pw.FittedBox(
-                            fit: pw.BoxFit.scaleDown,
-                            child: pw.Text(
-                              text,
+          final contentWidth = effectivePageFormat.width - 20;
+          final contentHeight = effectivePageFormat.height - 32;
+          return pw.SizedBox(
+            width: contentWidth,
+            height: contentHeight,
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.topCenter,
+              child: pw.SizedBox(
+                width: contentWidth,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    pw.Center(
+                      child: shreeHeaderImage == null
+                          ? pw.Text(
+                              'Shree',
                               style: pw.TextStyle(
+                                fontSize: 5,
                                 fontWeight: pw.FontWeight.bold,
-                                fontSize: 9.2,
                               ),
+                            )
+                          : pw.Image(
+                              shreeHeaderImage,
+                              width: 35,
+                              fit: pw.BoxFit.contain,
                             ),
-                          ),
-                        );
-                      }).toList(),
-                      data: selectedItemsForBreakup.asMap().entries.map((
-                        entry,
-                      ) {
-                        final index = entry.key + 1;
-                        final item = entry.value;
-                        return [
-                          '$index',
-                          item.title,
-                          item.categoryDisplay,
-                          item.grossWeight.toStringAsFixed(3),
-                          item.lessWeight.toStringAsFixed(3),
-                          item.weightValue.toStringAsFixed(3),
-                          formatRateText(item),
-                          formatMakingText(item),
-                          item.gstDisplay,
-                          PriceCalculator.formatIndianAmount(
-                            item.additionalAmount,
-                          ),
-                          PriceCalculator.formatIndianAmount(item.amount),
-                        ];
-                      }).toList(),
-                      headerAlignments: const {
-                        9: pw.Alignment.centerRight,
-                        10: pw.Alignment.center,
-                      },
-                      cellAlignments: const {
-                        9: pw.Alignment.centerRight,
-                        10: pw.Alignment.centerRight,
-                      },
-                      headerStyle: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 9.2,
-                      ),
-                      cellStyle: const pw.TextStyle(fontSize: 8.8),
-                      cellBuilder: (index, cell, rowNum) {
-                        if (index == 10) {
-                          return pw.FittedBox(
-                            fit: pw.BoxFit.scaleDown,
-                            alignment: pw.Alignment.centerRight,
-                            child: pw.Text(
-                              cell.toString(),
-                              style: const pw.TextStyle(fontSize: 8.8),
-                            ),
-                          );
-                        }
-                        return null;
-                      },
-                      border: pw.TableBorder.all(
-                        color: PdfColors.black,
-                        width: 0.6,
-                      ),
-                      headerDecoration: const pw.BoxDecoration(
-                        color: PdfColors.grey300,
-                      ),
-                      columnWidths: {
-                        0: const pw.FlexColumnWidth(1),
-                        1: const pw.FlexColumnWidth(2.8),
-                        2: const pw.FlexColumnWidth(1.6),
-                        3: const pw.FlexColumnWidth(1.3),
-                        4: const pw.FlexColumnWidth(1.2),
-                        5: const pw.FlexColumnWidth(1.2),
-                        6: const pw.FlexColumnWidth(1.3),
-                        7: const pw.FlexColumnWidth(1.8),
-                        8: const pw.FlexColumnWidth(0.9),
-                        9: const pw.FlexColumnWidth(1.4),
-                        10: const pw.FlexColumnWidth(2.0),
-                      },
                     ),
-                  ],
-                  if (data.oldItems.isNotEmpty) ...[
-                    sectionTitle(tr('Old Items Details', 'पुराने आइटम विवरण')),
-                    pw.TableHelper.fromTextArray(
-                      headers: const [
-                        'S.No',
-                        'Item Name',
-                        'Gross Wt',
-                        'Less Wt',
-                        'Net Wt',
-                        'Calculation',
-                        'Total',
-                      ],
-                      data: data.oldItems.asMap().entries.map((entry) {
-                        final index = entry.key + 1;
-                        final item = entry.value;
-                        return [
-                          '$index',
-                          item.title,
-                          item.grossWeight.toStringAsFixed(3),
-                          item.lessWeight.toStringAsFixed(3),
-                          item.netWeight.toStringAsFixed(3),
-                          item.formulaText,
-                          PriceCalculator.formatIndianAmount(item.amount),
-                        ];
-                      }).toList(),
-                      headerAlignments: const {6: pw.Alignment.centerRight},
-                      cellAlignments: const {6: pw.Alignment.centerRight},
-                      headerStyle: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 9.2,
-                      ),
-                      cellStyle: const pw.TextStyle(fontSize: 8.8),
-                      border: pw.TableBorder.all(
-                        color: PdfColors.black,
-                        width: 0.6,
-                      ),
-                      headerDecoration: const pw.BoxDecoration(
-                        color: PdfColors.grey300,
-                      ),
-                      columnWidths: {
-                        0: const pw.FlexColumnWidth(1),
-                        1: const pw.FlexColumnWidth(2.3),
-                        2: const pw.FlexColumnWidth(1.2),
-                        3: const pw.FlexColumnWidth(1.2),
-                        4: const pw.FlexColumnWidth(1.2),
-                        5: const pw.FlexColumnWidth(2.8),
-                        6: const pw.FlexColumnWidth(1.7),
-                      },
-                    ),
-                  ],
-                  sectionTitle(
-                    tr('Totals and Payment Details', 'कुल और भुगतान विवरण'),
-                  ),
-                  borderedBlock([
-                    pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(tr('Totals', 'कुल'), style: sectionStyle),
-                              pw.SizedBox(height: 6),
-                              keyValue(
-                                tr('Subtotal', 'उप-योग'),
-                                PriceCalculator.formatIndianAmount(
-                                  data.selectedTotal,
-                                ),
-                              ),
-                              keyValue(
-                                tr('Old Gold Deduction', 'पुराना सोना कटौती'),
-                                '-${PriceCalculator.formatIndianAmount(data.oldTotal)}',
-                              ),
-                              if (discount > 0)
-                                keyValue(
-                                  tr('Discount', 'छूट'),
-                                  '-${PriceCalculator.formatIndianAmount(discount)}',
-                                ),
-                              keyValue(
-                                tr('GST Total', 'जीएसटी कुल'),
-                                PriceCalculator.formatIndianAmount(
-                                  data.selectedGstTotal,
-                                ),
-                              ),
-                              keyValue(
-                                tr('Grand Total Payable', 'देय कुल राशि'),
-                                PriceCalculator.formatIndianAmount(netPayable),
-                                emphasize: true,
-                              ),
-                              keyValue(dueLabel, dueText, emphasize: true),
-                            ],
-                          ),
-                        ),
-                        pw.SizedBox(width: 16),
-                        pw.Expanded(
-                          flex: 1,
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(
-                                tr('Payment Details', 'भुगतान विवरण'),
-                                style: sectionStyle,
-                              ),
-                              pw.SizedBox(height: 6),
-                              if (paymentGridRows.isNotEmpty)
-                                pw.Table(
-                                  border: pw.TableBorder.all(
-                                    color: PdfColors.grey500,
-                                    width: 0.5,
+                    pw.SizedBox(height: 8),
+                    borderedBlock([
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.RichText(
+                                  text: pw.TextSpan(
+                                    children: [
+                                      pw.TextSpan(
+                                        text: 'ESTIMATED ',
+                                        style: sectionStyle.copyWith(
+                                          fontWeight: pw.FontWeight.bold,
+                                          fontSize: 12.2,
+                                        ),
+                                      ),
+                                      pw.TextSpan(
+                                        text: 'Details',
+                                        style: sectionStyle,
+                                      ),
+                                    ],
                                   ),
-                                  columnWidths: const {
-                                    0: pw.FlexColumnWidth(1.55),
-                                    1: pw.FlexColumnWidth(1.05),
-                                    2: pw.FlexColumnWidth(1.2),
-                                    3: pw.FlexColumnWidth(1.2),
-                                  },
-                                  children: [
-                                    ...paymentGridRows.map((row) {
-                                      return pw.TableRow(
+                                ),
+                                pw.SizedBox(height: 6),
+                                keyValue(
+                                  tr('Invoice No', 'इनवॉइस नं.'),
+                                  invoiceNo,
+                                ),
+                                keyValue(
+                                  tr('Bill Date & Time', 'बिल दिनांक व समय'),
+                                  '$billDate $billTime',
+                                ),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(width: 16),
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  tr('Customer Details', 'ग्राहक विवरण'),
+                                  style: sectionStyle,
+                                ),
+                                pw.SizedBox(height: 6),
+                                keyValue(
+                                  tr('Customer Name', 'ग्राहक नाम'),
+                                  customerName.isEmpty
+                                      ? '________________'
+                                      : customerName,
+                                ),
+                                keyValueWidget(
+                                  tr('Customer Mobile', 'मोबाइल नंबर'),
+                                  customerMobile.isEmpty
+                                      ? pw.Text(
+                                          '________________',
+                                          textAlign: pw.TextAlign.right,
+                                          style: valueStyle,
+                                        )
+                                      : pw.Text(
+                                          customerMobile,
+                                          textAlign: pw.TextAlign.right,
+                                          style: valueStyle,
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ]),
+                    pw.SizedBox(height: 8),
+                    borderedBlock([
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  tr(
+                                    'Quick Item Summary',
+                                    'त्वरित आइटम सारांश',
+                                  ),
+                                  style: sectionStyle,
+                                ),
+                                pw.SizedBox(height: 6),
+                                ...amountSummaryRows,
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(width: 16),
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  tr(
+                                    'Category Weight Summary',
+                                    'श्रेणी वजन सारांश',
+                                  ),
+                                  style: sectionStyle,
+                                ),
+                                pw.SizedBox(height: 6),
+                                ...categoryWeightRows,
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ]),
+                    if (data.selectedItems.isNotEmpty) ...[
+                      sectionTitle(
+                        tr(
+                          'Item-wise Price Breakup',
+                          'आइटम अनुसार मूल्य विवरण',
+                        ),
+                      ),
+                      pw.TableHelper.fromTextArray(
+                        headers:
+                            <String>[
+                              tr('S.No', 'क्र.सं.'),
+                              tr('Item Name', 'आइटम नाम'),
+                              tr('Category', 'श्रेणी'),
+                              tr('Gross Wt', 'ग्रॉस वज़न'),
+                              tr('Less Wt', 'कम वज़न'),
+                              tr('Net Wt', 'नेट वज़न'),
+                              tr('Rate', 'रेट'),
+                              tr('Making', 'मेकिंग'),
+                              tr('GST', 'जीएसटी'),
+                              tr('Additional', 'अतिरिक्त'),
+                              tr('Total', 'कुल'),
+                            ].map((text) {
+                              return pw.Center(
+                                child: pw.FittedBox(
+                                  fit: pw.BoxFit.scaleDown,
+                                  child: pw.Text(
+                                    text,
+                                    style: pw.TextStyle(
+                                      fontWeight: pw.FontWeight.bold,
+                                      fontSize: 9.2,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                        data: selectedItemsForBreakup.asMap().entries.map((
+                          entry,
+                        ) {
+                          final index = entry.key + 1;
+                          final item = entry.value;
+                          return [
+                            '$index',
+                            item.title,
+                            item.categoryDisplay,
+                            item.grossWeight.toStringAsFixed(3),
+                            item.lessWeight.toStringAsFixed(3),
+                            item.weightValue.toStringAsFixed(3),
+                            formatRateText(item),
+                            formatMakingText(item),
+                            item.gstDisplay,
+                            PriceCalculator.formatIndianAmount(
+                              item.additionalAmount,
+                            ),
+                            PriceCalculator.formatIndianAmount(item.amount),
+                          ];
+                        }).toList(),
+                        headerAlignments: const {
+                          9: pw.Alignment.centerRight,
+                          10: pw.Alignment.center,
+                        },
+                        cellAlignments: const {
+                          9: pw.Alignment.centerRight,
+                          10: pw.Alignment.centerRight,
+                        },
+                        headerStyle: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          fontSize: 9.2,
+                        ),
+                        cellStyle: const pw.TextStyle(fontSize: 8.8),
+                        cellBuilder: (index, cell, rowNum) {
+                          if (index == 10) {
+                            return pw.FittedBox(
+                              fit: pw.BoxFit.scaleDown,
+                              alignment: pw.Alignment.centerRight,
+                              child: pw.Text(
+                                cell.toString(),
+                                style: const pw.TextStyle(fontSize: 8.8),
+                              ),
+                            );
+                          }
+                          return null;
+                        },
+                        border: pw.TableBorder.all(
+                          color: PdfColors.black,
+                          width: 0.6,
+                        ),
+                        headerDecoration: const pw.BoxDecoration(
+                          color: PdfColors.grey300,
+                        ),
+                        columnWidths: {
+                          0: const pw.FlexColumnWidth(1),
+                          1: const pw.FlexColumnWidth(2.8),
+                          2: const pw.FlexColumnWidth(1.6),
+                          3: const pw.FlexColumnWidth(1.3),
+                          4: const pw.FlexColumnWidth(1.2),
+                          5: const pw.FlexColumnWidth(1.2),
+                          6: const pw.FlexColumnWidth(1.3),
+                          7: const pw.FlexColumnWidth(1.8),
+                          8: const pw.FlexColumnWidth(0.9),
+                          9: const pw.FlexColumnWidth(1.4),
+                          10: const pw.FlexColumnWidth(2.0),
+                        },
+                      ),
+                    ],
+                    if (data.oldItems.isNotEmpty) ...[
+                      sectionTitle(
+                        tr('Old Items Details', 'पुराने आइटम विवरण'),
+                      ),
+                      pw.TableHelper.fromTextArray(
+                        headers: const [
+                          'S.No',
+                          'Item Name',
+                          'Gross Wt',
+                          'Less Wt',
+                          'Net Wt',
+                          'Calculation',
+                          'Total',
+                        ],
+                        data: data.oldItems.asMap().entries.map((entry) {
+                          final index = entry.key + 1;
+                          final item = entry.value;
+                          return [
+                            '$index',
+                            item.title,
+                            item.grossWeight.toStringAsFixed(3),
+                            item.lessWeight.toStringAsFixed(3),
+                            item.netWeight.toStringAsFixed(3),
+                            item.formulaText,
+                            PriceCalculator.formatIndianAmount(item.amount),
+                          ];
+                        }).toList(),
+                        headerAlignments: const {6: pw.Alignment.centerRight},
+                        cellAlignments: const {6: pw.Alignment.centerRight},
+                        headerStyle: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          fontSize: 9.2,
+                        ),
+                        cellStyle: const pw.TextStyle(fontSize: 8.8),
+                        border: pw.TableBorder.all(
+                          color: PdfColors.black,
+                          width: 0.6,
+                        ),
+                        headerDecoration: const pw.BoxDecoration(
+                          color: PdfColors.grey300,
+                        ),
+                        columnWidths: {
+                          0: const pw.FlexColumnWidth(1),
+                          1: const pw.FlexColumnWidth(2.3),
+                          2: const pw.FlexColumnWidth(1.2),
+                          3: const pw.FlexColumnWidth(1.2),
+                          4: const pw.FlexColumnWidth(1.2),
+                          5: const pw.FlexColumnWidth(2.8),
+                          6: const pw.FlexColumnWidth(1.7),
+                        },
+                      ),
+                    ],
+                    sectionTitle(
+                      tr('Totals and Payment Details', 'कुल और भुगतान विवरण'),
+                    ),
+                    borderedBlock([
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  tr('Totals', 'कुल'),
+                                  style: sectionStyle,
+                                ),
+                                pw.SizedBox(height: 6),
+                                keyValue(
+                                  tr('Subtotal', 'उप-योग'),
+                                  PriceCalculator.formatIndianAmount(
+                                    data.selectedTotal,
+                                  ),
+                                ),
+                                keyValue(
+                                  tr('Old Gold Deduction', 'पुराना सोना कटौती'),
+                                  '-${PriceCalculator.formatIndianAmount(data.oldTotal)}',
+                                ),
+                                if (discount > 0)
+                                  keyValue(
+                                    tr('Discount', 'छूट'),
+                                    '-${PriceCalculator.formatIndianAmount(discount)}',
+                                  ),
+                                keyValue(
+                                  tr('GST Total', 'जीएसटी कुल'),
+                                  PriceCalculator.formatIndianAmount(
+                                    data.selectedGstTotal,
+                                  ),
+                                ),
+                                keyValue(
+                                  tr('Grand Total Payable', 'देय कुल राशि'),
+                                  PriceCalculator.formatIndianAmount(
+                                    netPayable,
+                                  ),
+                                  emphasize: true,
+                                ),
+                                keyValue(dueLabel, dueText, emphasize: true),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(width: 16),
+                          pw.Expanded(
+                            flex: 1,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  tr('Payment Details', 'भुगतान विवरण'),
+                                  style: sectionStyle,
+                                ),
+                                pw.SizedBox(height: 6),
+                                if (paymentGridRows.isNotEmpty)
+                                  pw.Table(
+                                    border: pw.TableBorder.all(
+                                      color: PdfColors.grey500,
+                                      width: 0.5,
+                                    ),
+                                    columnWidths: const {
+                                      0: pw.FlexColumnWidth(1.55),
+                                      1: pw.FlexColumnWidth(1.05),
+                                      2: pw.FlexColumnWidth(1.2),
+                                      3: pw.FlexColumnWidth(1.2),
+                                    },
+                                    children: [
+                                      ...paymentGridRows.map((row) {
+                                        return pw.TableRow(
+                                          children: [
+                                            pw.Padding(
+                                              padding:
+                                                  const pw.EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 3,
+                                                  ),
+                                              child: pw.Text(
+                                                row[0],
+                                                style: labelStyle,
+                                              ),
+                                            ),
+                                            pw.Padding(
+                                              padding:
+                                                  const pw.EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 3,
+                                                  ),
+                                              child: pw.Text(
+                                                row[1],
+                                                style: labelStyle,
+                                              ),
+                                            ),
+                                            pw.Padding(
+                                              padding:
+                                                  const pw.EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 3,
+                                                  ),
+                                              child: pw.Text(
+                                                row[2],
+                                                textAlign: pw.TextAlign.right,
+                                                style: labelStyle,
+                                              ),
+                                            ),
+                                            pw.Padding(
+                                              padding:
+                                                  const pw.EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 3,
+                                                  ),
+                                              child: pw.Text(
+                                                row[3],
+                                                textAlign: pw.TextAlign.right,
+                                                style: labelStyle,
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }),
+                                      pw.TableRow(
+                                        decoration: const pw.BoxDecoration(
+                                          color: PdfColors.grey300,
+                                        ),
                                         children: [
+                                          pw.SizedBox(),
                                           pw.Padding(
                                             padding:
                                                 const pw.EdgeInsets.symmetric(
@@ -1874,8 +2304,11 @@ class _TotalPageState extends State<TotalPage> {
                                                   vertical: 3,
                                                 ),
                                             child: pw.Text(
-                                              row[0],
-                                              style: labelStyle,
+                                              tr('Total', 'कुल'),
+                                              style: pw.TextStyle(
+                                                fontWeight: pw.FontWeight.bold,
+                                                fontSize: 9,
+                                              ),
                                             ),
                                           ),
                                           pw.Padding(
@@ -1885,20 +2318,14 @@ class _TotalPageState extends State<TotalPage> {
                                                   vertical: 3,
                                                 ),
                                             child: pw.Text(
-                                              row[1],
-                                              style: labelStyle,
-                                            ),
-                                          ),
-                                          pw.Padding(
-                                            padding:
-                                                const pw.EdgeInsets.symmetric(
-                                                  horizontal: 4,
-                                                  vertical: 3,
-                                                ),
-                                            child: pw.Text(
-                                              row[2],
+                                              PriceCalculator.formatIndianAmount(
+                                                cashReceived,
+                                              ),
                                               textAlign: pw.TextAlign.right,
-                                              style: labelStyle,
+                                              style: pw.TextStyle(
+                                                fontWeight: pw.FontWeight.bold,
+                                                fontSize: 9,
+                                              ),
                                             ),
                                           ),
                                           pw.Padding(
@@ -1908,104 +2335,56 @@ class _TotalPageState extends State<TotalPage> {
                                                   vertical: 3,
                                                 ),
                                             child: pw.Text(
-                                              row[3],
+                                              PriceCalculator.formatIndianAmount(
+                                                upiReceived,
+                                              ),
                                               textAlign: pw.TextAlign.right,
-                                              style: labelStyle,
+                                              style: pw.TextStyle(
+                                                fontWeight: pw.FontWeight.bold,
+                                                fontSize: 9,
+                                              ),
                                             ),
                                           ),
                                         ],
-                                      );
-                                    }),
-                                    pw.TableRow(
-                                      decoration: const pw.BoxDecoration(
-                                        color: PdfColors.grey300,
                                       ),
-                                      children: [
-                                        pw.SizedBox(),
-                                        pw.Padding(
-                                          padding:
-                                              const pw.EdgeInsets.symmetric(
-                                                horizontal: 4,
-                                                vertical: 3,
-                                              ),
-                                          child: pw.Text(
-                                            tr('Total', 'कुल'),
-                                            style: pw.TextStyle(
-                                              fontWeight: pw.FontWeight.bold,
-                                              fontSize: 9,
-                                            ),
-                                          ),
-                                        ),
-                                        pw.Padding(
-                                          padding:
-                                              const pw.EdgeInsets.symmetric(
-                                                horizontal: 4,
-                                                vertical: 3,
-                                              ),
-                                          child: pw.Text(
-                                            PriceCalculator.formatIndianAmount(
-                                              cashReceived,
-                                            ),
-                                            textAlign: pw.TextAlign.right,
-                                            style: pw.TextStyle(
-                                              fontWeight: pw.FontWeight.bold,
-                                              fontSize: 9,
-                                            ),
-                                          ),
-                                        ),
-                                        pw.Padding(
-                                          padding:
-                                              const pw.EdgeInsets.symmetric(
-                                                horizontal: 4,
-                                                vertical: 3,
-                                              ),
-                                          child: pw.Text(
-                                            PriceCalculator.formatIndianAmount(
-                                              upiReceived,
-                                            ),
-                                            textAlign: pw.TextAlign.right,
-                                            style: pw.TextStyle(
-                                              fontWeight: pw.FontWeight.bold,
-                                              fontSize: 9,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                )
-                              else
-                                pw.Text('-', style: labelStyle),
-                              pw.SizedBox(height: 5),
-                              keyValue(
-                                tr('Total Amount Received', 'प्राप्त कुल राशि'),
-                                PriceCalculator.formatIndianAmount(
-                                  totalReceived,
+                                    ],
+                                  )
+                                else
+                                  pw.Text('-', style: labelStyle),
+                                pw.SizedBox(height: 5),
+                                keyValue(
+                                  tr(
+                                    'Total Amount Received',
+                                    'प्राप्त कुल राशि',
+                                  ),
+                                  PriceCalculator.formatIndianAmount(
+                                    totalReceived,
+                                  ),
+                                  emphasize: true,
                                 ),
-                                emphasize: true,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ]),
+                    sectionTitle(tr('Terms & Policies', 'नियम व शर्तें')),
+                    pw.Text(
+                      tr(
+                        '1. Exchange or buyback value is decided as per prevailing shop policy.',
+                        '1. एक्सचेंज या बायबैक मूल्य दुकान की वर्तमान नीति के अनुसार तय होगा।',
+                      ),
+                      style: labelStyle,
                     ),
-                  ]),
-                  sectionTitle(tr('Terms & Policies', 'नियम व शर्तें')),
-                  pw.Text(
-                    tr(
-                      '1. Exchange or buyback value is decided as per prevailing shop policy.',
-                      '1. एक्सचेंज या बायबैक मूल्य दुकान की वर्तमान नीति के अनुसार तय होगा।',
+                    pw.Text(
+                      tr(
+                        '2. Please keep this bill for future exchange and service.',
+                        '2. कृपया भविष्य के एक्सचेंज और सेवा हेतु यह बिल संभालकर रखें।',
+                      ),
+                      style: labelStyle,
                     ),
-                    style: labelStyle,
-                  ),
-                  pw.Text(
-                    tr(
-                      '2. Please keep this bill for future exchange and service.',
-                      '2. कृपया भविष्य के एक्सचेंज और सेवा हेतु यह बिल संभालकर रखें।',
-                    ),
-                    style: labelStyle,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -2022,11 +2401,6 @@ class _TotalPageState extends State<TotalPage> {
     double upiReceived,
     double discount,
   ) async {
-    if (!_ensureCustomerInfo()) {
-      return;
-    }
-    final customerNameSnapshot = _customerNameController.text.trim();
-    final customerMobileSnapshot = _customerMobileController.text.trim();
     final paymentEntriesSnapshot = _buildPaymentEntryRowsForPdf();
     if (!mounted) {
       return;
@@ -2038,90 +2412,78 @@ class _TotalPageState extends State<TotalPage> {
             appBar: AppBar(title: const Text('Bill Preview')),
             body: PdfPreview(
               useActions: true,
+              allowPrinting: false,
+              allowSharing: false,
+              initialPageFormat: _billPageFormat,
+              dynamicLayout: false,
               canChangePageFormat: false,
               canChangeOrientation: false,
               canDebug: false,
               maxPageWidth: 1600,
               actions: [
                 PdfPreviewAction(
-                  icon: const Icon(Icons.download),
+                  icon: const Icon(Icons.print),
                   onPressed: (actionContext, build, pageFormat) async {
-                    final bytes = await build(pageFormat);
-                    final fileName = ShareFileNamer.startBatch(
-                      prefix: 'tb',
-                      extension: 'pdf',
-                    ).nextName();
-                    final savedPath = await _saveBillToDownloads(
-                      bytes,
-                      fileName,
-                    );
-                    if (!actionContext.mounted) {
-                      return;
-                    }
-                    if (savedPath != null) {
-                      ScaffoldMessenger.of(actionContext).showSnackBar(
-                        SnackBar(content: Text('Bill saved: $savedPath')),
+                    try {
+                      final didPrint = await Printing.layoutPdf(
+                        onLayout: (pageFormat) => build(pageFormat),
+                        name: 'Bill',
+                        format: _billPageFormat,
+                        dynamicLayout: true,
+                        usePrinterSettings: true,
                       );
-                    } else {
+                      if (!actionContext.mounted) {
+                        return;
+                      }
+                      if (!didPrint) {
+                        ScaffoldMessenger.of(actionContext).showSnackBar(
+                          const SnackBar(content: Text('Print cancelled')),
+                        );
+                      }
+                    } catch (_) {
+                      if (!actionContext.mounted) {
+                        return;
+                      }
                       ScaffoldMessenger.of(actionContext).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Could not save in Downloads/bills',
-                          ),
-                        ),
+                        const SnackBar(content: Text('Failed to print bill')),
+                      );
+                    }
+                  },
+                ),
+                PdfPreviewAction(
+                  icon: const Icon(Icons.share),
+                  onPressed: (actionContext, build, pageFormat) async {
+                    try {
+                      final bytes = await build(pageFormat);
+                      final filename =
+                          'Bill-${DateTime.now().millisecondsSinceEpoch}.pdf';
+                      await Printing.sharePdf(bytes: bytes, filename: filename);
+                    } catch (_) {
+                      if (!actionContext.mounted) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(actionContext).showSnackBar(
+                        const SnackBar(content: Text('Failed to share bill')),
                       );
                     }
                   },
                 ),
               ],
-              build: (_) => _buildTotalsPdfBytes(
+              build: (pageFormat) => _buildTotalsPdfBytes(
                 data,
                 cashReceived,
                 upiReceived,
                 discount,
                 paymentEntriesSnapshot,
-                customerNameSnapshot,
-                customerMobileSnapshot,
+                '',
+                '',
+                pageFormat,
               ),
             ),
           );
         },
       ),
     );
-  }
-
-  Future<String?> _saveBillToDownloads(Uint8List bytes, String fileName) async {
-    if (!Platform.isAndroid) {
-      return null;
-    }
-
-    final candidateDirectories = <String>[
-      '/storage/emulated/0/Download/bills',
-      '/sdcard/Download/bills',
-    ];
-
-    try {
-      final downloadsDir = await getDownloadsDirectory();
-      if (downloadsDir != null) {
-        candidateDirectories.add('${downloadsDir.path}/bills');
-      }
-    } catch (_) {
-      // ignore and fall back to static Android paths
-    }
-
-    for (final path in candidateDirectories) {
-      try {
-        final dir = Directory(path);
-        await dir.create(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsBytes(bytes, flush: true);
-        return file.path;
-      } catch (_) {
-        // Try next candidate.
-      }
-    }
-
-    return null;
   }
 
   Future<void> _finishTransaction(
@@ -2253,20 +2615,6 @@ class _TotalPageState extends State<TotalPage> {
     }
   }
 
-  bool _ensureCustomerInfo() {
-    final validationError = TotalCustomerValidator.validate(
-      customerName: _customerNameController.text,
-      customerMobile: _customerMobileController.text,
-    );
-    if (validationError == null) {
-      return true;
-    }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(validationError)));
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<int>(
@@ -2298,6 +2646,7 @@ class _TotalPageState extends State<TotalPage> {
                 ? Colors.red
                 : (diff == 0 ? Colors.blueGrey : Colors.green);
             final canGenerateQr = diff > 0;
+            final theme = Theme.of(context);
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -2311,39 +2660,6 @@ class _TotalPageState extends State<TotalPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextField(
-                            controller: _customerNameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Customer Name',
-                            ),
-                            onChanged: (_) {
-                              setState(() {});
-                              unawaited(_saveDraft());
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _customerMobileController,
-                            keyboardType: TextInputType.phone,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(10),
-                            ],
-                            decoration:
-                                const InputDecoration(
-                                  labelText: 'Mobile Number',
-                                ).copyWith(
-                                  counterText: '',
-                                  errorText: _mobileInputError(
-                                    _customerMobileController.text,
-                                  ),
-                                ),
-                            onChanged: (_) {
-                              setState(() {});
-                              unawaited(_saveDraft());
-                            },
-                          ),
-                          const SizedBox(height: 8),
                           Row(
                             children: [
                               const Expanded(
@@ -2352,30 +2668,14 @@ class _TotalPageState extends State<TotalPage> {
                                   style: TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),
-                              Wrap(
-                                spacing: 2,
-                                children: [
-                                  TextButton(
-                                    onPressed: _loadDraft,
-                                    child: const Text('Restore'),
-                                  ),
-                                  TextButton(
-                                    onPressed: _clearDraftAndResetForm,
-                                    child: const Text('Clear'),
-                                  ),
-                                  TextButton.icon(
-                                    onPressed: _addPaymentEntry,
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Add'),
-                                  ),
-                                ],
-                              ),
                             ],
                           ),
                           Text(
                             'Add date, mode and amount for each payment.',
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -2519,6 +2819,26 @@ class _TotalPageState extends State<TotalPage> {
                               ),
                             );
                           }),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _clearPaymentEntries,
+                                  icon: const Icon(Icons.clear_all),
+                                  label: const Text('Clear Entries'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _addPaymentEntry,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Add Entry'),
+                                ),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 4),
                           if (data.discountEnabled) ...[
                             TextField(
@@ -2561,25 +2881,131 @@ class _TotalPageState extends State<TotalPage> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
-                          Center(
-                            child: isSettled
-                                ? Text(
-                                    'Transaction Settled',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: dueColor,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  )
-                                : _VibrateText(
-                                    '$dueLabel: $dueText',
-                                    color: dueColor,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    textAlign: TextAlign.center,
-                                  ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Center(
+                                  child: isSettled
+                                      ? Text(
+                                          'Transaction Settled',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: dueColor,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        )
+                                      : _VibrateText(
+                                          '$dueLabel: $dueText',
+                                          color: dueColor,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: () => unawaited(
+                                  _speakDueAmount(diff: diff, hindi: false),
+                                ),
+                                child: const Text('EN'),
+                              ),
+                              const SizedBox(width: 6),
+                              OutlinedButton(
+                                onPressed: () => unawaited(
+                                  _speakDueAmount(diff: diff, hindi: true),
+                                ),
+                                child: const Text('हिं'),
+                              ),
+                              const SizedBox(width: 6),
+                              OutlinedButton.icon(
+                                onPressed: _isSpeakingAmount
+                                    ? () => unawaited(_muteCurrentAmountSpeech())
+                                    : null,
+                                icon: Icon(
+                                  _amountSpeechMuted
+                                      ? Icons.volume_off
+                                      : Icons.volume_mute,
+                                ),
+                                label: Text(
+                                  _amountSpeechMuted ? 'Muted' : 'Mute',
+                                ),
+                              ),
+                            ],
                           ),
+                          if (data.selectedItems.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Takeaway Optimizer (Budget = Received Amount)',
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _activeTakeawayMode =
+                                            _TakeawayMode.maxItems;
+                                      });
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor:
+                                          _activeTakeawayMode ==
+                                              _TakeawayMode.maxItems
+                                          ? theme.colorScheme.primaryContainer
+                                          : null,
+                                    ),
+                                    icon: const Icon(Icons.format_list_numbered),
+                                    label: const Text('Max Items'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _activeTakeawayMode =
+                                            _TakeawayMode.maxWeight;
+                                      });
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor:
+                                          _activeTakeawayMode ==
+                                              _TakeawayMode.maxWeight
+                                          ? theme.colorScheme.primaryContainer
+                                          : null,
+                                    ),
+                                    icon: const Icon(Icons.scale),
+                                    label: const Text('Max Weight'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  onPressed: _activeTakeawayMode == null
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _activeTakeawayMode = null;
+                                          });
+                                        },
+                                  child: const Text('Clear'),
+                                ),
+                              ],
+                            ),
+                            _buildTakeawaySuggestionPanel(
+                              items: data.selectedItems,
+                              budget: totalReceived,
+                              theme: theme,
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           if (canGenerateQr)
                             OutlinedButton.icon(
@@ -2750,6 +3176,42 @@ class _TotalPageState extends State<TotalPage> {
       },
     );
   }
+}
+
+class _TakeawaySuggestion {
+  const _TakeawaySuggestion({
+    required this.mode,
+    required this.budget,
+    required this.selectedItems,
+    required this.totalAmount,
+    required this.totalWeight,
+    required this.budgetUnit,
+  });
+
+  final _TakeawayMode mode;
+  final double budget;
+  final List<_SelectedItemView> selectedItems;
+  final double totalAmount;
+  final double totalWeight;
+  final int budgetUnit;
+
+  double get leftover => math.max(0, budget - totalAmount);
+}
+
+class _KnapsackState {
+  const _KnapsackState({
+    required this.count,
+    required this.weightMilliGrams,
+    required this.spentAmount,
+    required this.itemIndex,
+    required this.previous,
+  });
+
+  final int count;
+  final int weightMilliGrams;
+  final double spentAmount;
+  final int? itemIndex;
+  final _KnapsackState? previous;
 }
 
 class _TotalsData {
@@ -3239,3 +3701,4 @@ class _FormulaText extends StatelessWidget {
     );
   }
 }
+
