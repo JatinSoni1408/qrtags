@@ -4,12 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart'
-    as mlkit;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
 import '../features/scan/scan_selection_store.dart';
 import '../utils/selection_notifier.dart';
 import '../widgets/settings_button.dart';
@@ -35,7 +32,6 @@ class ScanPage extends StatefulWidget {
 
 class _ScanPageState extends State<ScanPage> {
   static const ScanSelectionStore _selectionStore = ScanSelectionStore();
-  late final mlkit.BarcodeScanner _barcodeScanner;
   late final FirebaseFirestore _firestore;
   late final AudioPlayer _audioPlayer;
   bool _isScanning = false;
@@ -58,9 +54,6 @@ class _ScanPageState extends State<ScanPage> {
   void initState() {
     super.initState();
     _firestore = widget.firestore ?? FirebaseFirestore.instance;
-    _barcodeScanner = mlkit.BarcodeScanner(
-      formats: [mlkit.BarcodeFormat.qrCode],
-    );
     _audioPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
     _loadGlobalGst();
     unawaited(_syncSelectedListsFromScanned());
@@ -71,7 +64,6 @@ class _ScanPageState extends State<ScanPage> {
   void dispose() {
     _recalcDebounceTimer?.cancel();
     SettingsButton.ratesVersion.removeListener(_handleRatesUpdated);
-    _barcodeScanner.close();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -143,80 +135,6 @@ class _ScanPageState extends State<ScanPage> {
     setState(() {
       _isScanning = false;
     });
-  }
-
-  Future<void> _scanFromGallery() async {
-    if (_isScanning) {
-      return;
-    }
-    setState(() {
-      _isScanning = true;
-    });
-    try {
-      final picker = ImagePicker();
-      final picked = await picker.pickMultiImage();
-      if (!mounted) {
-        return;
-      }
-      if (picked.isEmpty) {
-        return;
-      }
-      final resolvedPayloads = <String>[];
-      int noQrCount = 0;
-      int errorCount = 0;
-      for (final image in picked) {
-        try {
-          final inputImage = mlkit.InputImage.fromFilePath(image.path);
-          final barcodes = await _barcodeScanner.processImage(inputImage);
-          final value = barcodes.isNotEmpty
-              ? (barcodes.first.rawValue ?? '')
-              : '';
-          if (value.isEmpty) {
-            noQrCount++;
-            continue;
-          }
-          final resolved = await _resolvePayload(value);
-          resolvedPayloads.add(resolved);
-        } catch (_) {
-          errorCount++;
-        }
-      }
-      if (resolvedPayloads.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No QR code found in selected images'),
-            ),
-          );
-        }
-        return;
-      }
-      await _handleScannedBatch(resolvedPayloads);
-      if (mounted && (noQrCount > 0 || errorCount > 0)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Scanned ${resolvedPayloads.length}/${picked.length} image(s). '
-                      '${noQrCount > 0 ? '$noQrCount had no QR. ' : ''}'
-                      '${errorCount > 0 ? '$errorCount failed.' : ''}'
-                  .trim(),
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to scan image')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isScanning = false;
-        });
-      }
-    }
   }
 
   Future<String> _resolvePayload(String value) async {
@@ -749,14 +667,6 @@ class _ScanPageState extends State<ScanPage> {
                     onPressed: _isScanning ? null : _scanWithCamera,
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('Scan QR'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isScanning ? null : _scanFromGallery,
-                    icon: const Icon(Icons.upload_file),
-                    label: const Text('Upload QR'),
                   ),
                 ),
               ],
