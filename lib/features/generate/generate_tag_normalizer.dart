@@ -5,6 +5,20 @@ class GenerateTagNormalizer {
 
   static String normalizedText(dynamic value) => value?.toString().trim() ?? '';
 
+  static bool normalizedBool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+    final normalized = normalizedText(value).toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return normalized != 'false' &&
+        normalized != '0' &&
+        normalized != 'no' &&
+        normalized != 'off';
+  }
+
   static List<String> normalizedLessEntries(dynamic raw) {
     if (raw is! List) {
       return const <String>[];
@@ -47,6 +61,7 @@ class GenerateTagNormalizer {
       'grossWeight': normalizedText(data['grossWeight']),
       'lessWeight': normalizedText(data['lessWeight']),
       'netWeight': normalizedText(data['netWeight']),
+      'huid': normalizedBool(data['huid']),
       'lessCategories': normalizedLessEntries(data['lessCategories']),
       'additionalTypes': normalizedAdditionalEntries(data['additionalTypes']),
     };

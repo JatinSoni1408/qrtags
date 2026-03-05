@@ -156,7 +156,9 @@ class _OldPageState extends State<OldPage> {
   }
 
   bool _usesTanch(String? returnBhav) =>
-      returnBhav != null && returnBhav != 'Gold22kt';
+      returnBhav != null &&
+      returnBhav != 'Gold22kt' &&
+      returnBhav != 'Gold18kt';
 
   double _calculateOldAmount({
     required double netWeight,
@@ -164,7 +166,7 @@ class _OldPageState extends State<OldPage> {
     required String? tanch,
   }) {
     final returnValue = returnBhav == null ? 0.0 : _returnBhavValue(returnBhav);
-    if (returnBhav == 'Gold22kt') {
+    if (!_usesTanch(returnBhav)) {
       return netWeight * returnValue;
     }
     final tanchValue = double.tryParse(tanch ?? '') ?? 0.0;
@@ -443,8 +445,8 @@ class _OldPageState extends State<OldPage> {
       case 'Silver':
         return '($netWeightText * ${tanchValue.toStringAsFixed(2)}) * ';
       case 'Gold22kt':
-        return '$netWeightText * ';
       case 'Gold18kt':
+        return '$netWeightText * ';
       case 'Gold24kt':
         return '($netWeightText * ${tanchValue.toStringAsFixed(2)}) * ';
       default:
@@ -509,14 +511,14 @@ class _OldPageState extends State<OldPage> {
                               ),
                             )
                             .toList(),
-                        onChanged: _selectedReturnBhav == 'Gold22kt'
-                            ? null
-                            : (value) {
+                        onChanged: _usesTanch(_selectedReturnBhav)
+                            ? (value) {
                                 setState(() {
                                   _selectedTanch = value;
                                 });
                                 _updateAmount();
-                              },
+                              }
+                            : null,
                         decoration: const InputDecoration(
                           labelText: 'Tanch',
                           isDense: true,
@@ -616,7 +618,7 @@ class _OldPageState extends State<OldPage> {
                         onChanged: (value) {
                           setState(() {
                             _selectedReturnBhav = value;
-                            if (value == 'Gold22kt') {
+                            if (!_usesTanch(value)) {
                               _selectedTanch = null;
                             }
                           });

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-// import 'package:flutter/services.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsButton extends StatelessWidget {
@@ -35,7 +35,48 @@ class SettingsButton extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   static double _parseRate(String value) =>
-      double.tryParse(value.trim()) ?? 0.0;
+      double.tryParse(value.replaceAll(',', '').trim()) ?? 0.0;
+
+  static String _formatRateInput(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    final isNegative = trimmed.startsWith('-');
+    final unsigned = isNegative ? trimmed.substring(1) : trimmed;
+    final hasDot = unsigned.contains('.');
+    final parts = unsigned.split('.');
+    final integerDigits = parts.first.replaceAll(RegExp(r'[^0-9]'), '');
+    final decimalDigits = hasDot
+        ? parts.skip(1).join('').replaceAll(RegExp(r'[^0-9]'), '')
+        : '';
+    final groupedInt = _groupIndianDigits(integerDigits);
+    final sign = isNegative ? '-' : '';
+    if (!hasDot) {
+      return '$sign$groupedInt';
+    }
+    return '$sign$groupedInt.$decimalDigits';
+  }
+
+  static String _groupIndianDigits(String digits) {
+    if (digits.isEmpty) {
+      return '';
+    }
+    if (digits.length <= 3) {
+      return digits;
+    }
+    final last3 = digits.substring(digits.length - 3);
+    final rest = digits.substring(0, digits.length - 3);
+    final buffer = StringBuffer();
+    for (int i = 0; i < rest.length; i++) {
+      buffer.write(rest[i]);
+      final posFromEnd = rest.length - i - 1;
+      if (posFromEnd % 2 == 0 && posFromEnd != 0) {
+        buffer.write(',');
+      }
+    }
+    return '${buffer.toString()},$last3';
+  }
 
   static double _toDouble(dynamic value, {double fallback = 0.0}) {
     if (value == null) {
@@ -180,16 +221,16 @@ class SettingsButton extends StatelessWidget {
     }
 
     final controller24 = TextEditingController(
-      text: (prefs.getDouble(_rateGold24Key) ?? 0).toString(),
+      text: _formatRateInput((prefs.getDouble(_rateGold24Key) ?? 0).toString()),
     );
     final controller22 = TextEditingController(
-      text: (prefs.getDouble(_rateGold22Key) ?? 0).toString(),
+      text: _formatRateInput((prefs.getDouble(_rateGold22Key) ?? 0).toString()),
     );
     final controller18 = TextEditingController(
-      text: (prefs.getDouble(_rateGold18Key) ?? 0).toString(),
+      text: _formatRateInput((prefs.getDouble(_rateGold18Key) ?? 0).toString()),
     );
     final controllerSilver = TextEditingController(
-      text: (prefs.getDouble(_rateSilverKey) ?? 0).toString(),
+      text: _formatRateInput((prefs.getDouble(_rateSilverKey) ?? 0).toString()),
     );
 
     await showDialog<void>(
@@ -212,6 +253,7 @@ class SettingsButton extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: const [_IndianRateInputFormatter()],
                       decoration: const InputDecoration(
                         labelText: 'Gold24kt rate',
                       ),
@@ -223,6 +265,7 @@ class SettingsButton extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: const [_IndianRateInputFormatter()],
                       decoration: const InputDecoration(
                         labelText: 'Gold22kt rate',
                       ),
@@ -234,6 +277,7 @@ class SettingsButton extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: const [_IndianRateInputFormatter()],
                       decoration: const InputDecoration(
                         labelText: 'Gold18kt rate',
                       ),
@@ -245,6 +289,7 @@ class SettingsButton extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: const [_IndianRateInputFormatter()],
                       decoration: const InputDecoration(
                         labelText: 'Silver rate',
                       ),
@@ -324,6 +369,26 @@ class SettingsButton extends StatelessWidget {
         tooltip: tooltip,
         onPressed: () => openRateSettings(context),
       ),
+    );
+  }
+}
+
+class _IndianRateInputFormatter extends TextInputFormatter {
+  const _IndianRateInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final formatted = SettingsButton._formatRateInput(newValue.text);
+    final selectionFromRight =
+        newValue.text.length - newValue.selection.extentOffset;
+    final nextOffset = formatted.length - selectionFromRight;
+    final clampedOffset = nextOffset.clamp(0, formatted.length);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: clampedOffset),
     );
   }
 }
