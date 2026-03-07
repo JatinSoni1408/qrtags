@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -14,8 +15,11 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isCreatingUser = false;
   bool _isSendingReset = false;
   bool _obscure = true;
+
+  bool _isSixDigitPin(String value) => RegExp(r'^\d{6}$').hasMatch(value);
 
   @override
   void initState() {
@@ -49,6 +53,12 @@ class _LoginPageState extends State<LoginPage> {
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Email and password are required')),
+      );
+      return;
+    }
+    if (!_isSixDigitPin(password)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a 6-digit PIN')),
       );
       return;
     }
@@ -117,8 +127,61 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _createUser() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email and password are required')),
+      );
+      return;
+    }
+    if (!_isSixDigitPin(password)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a 6-digit PIN')),
+      );
+      return;
+    }
+    await _saveLastEmail(email);
+    setState(() {
+      _isCreatingUser = true;
+    });
+    try {
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User created successfully')),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      final fallbackMessage = switch (e.code) {
+        'email-already-in-use' => 'Email already in use',
+        'invalid-email' => 'Invalid email address',
+        'weak-password' => 'Please use a stronger password',
+        _ => 'Unable to create user',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? fallbackMessage)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCreatingUser = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isBusy = _isLoading || _isSendingReset || _isCreatingUser;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -149,10 +212,17 @@ class _LoginPageState extends State<LoginPage> {
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscure,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6),
+                    ],
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: 'PIN',
                       border: const OutlineInputBorder(),
+                      counterText: '',
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscure ? Icons.visibility : Icons.visibility_off,
@@ -165,20 +235,26 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: (_isLoading || _isSendingReset)
-                          ? null
-                          : _sendPasswordReset,
-                      child: Text(
-                        _isSendingReset ? 'Sending...' : 'Forgot password?',
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: isBusy ? null : _sendPasswordReset,
+                        child: Text(
+                          _isSendingReset ? 'Sending...' : 'Forgot password?',
+                        ),
                       ),
-                    ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: isBusy ? null : _createUser,
+                        child: Text(
+                          _isCreatingUser ? 'Creating...' : 'Create New User',
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: (_isLoading || _isSendingReset) ? null : _submit,
+                    onPressed: isBusy ? null : _submit,
                     child: _isLoading
                         ? const SizedBox(
                             width: 20,

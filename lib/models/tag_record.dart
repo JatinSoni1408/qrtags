@@ -17,6 +17,7 @@ class TagRecord {
     required this.inventoryAdded,
     this.inventoryQueued = false,
     required this.createdAt,
+    required this.returnPurity,
     required this.rawData,
   });
 
@@ -35,6 +36,7 @@ class TagRecord {
   final bool inventoryAdded;
   final bool inventoryQueued;
   final Timestamp? createdAt;
+  final String returnPurity;
   final Map<String, dynamic> rawData;
 
   static List<Map<String, dynamic>> _parseEntries(dynamic raw) {
@@ -70,6 +72,7 @@ class TagRecord {
       createdAt: normalized['createdAt'] is Timestamp
           ? normalized['createdAt'] as Timestamp
           : null,
+      returnPurity: normalized['returnPurity']?.toString() ?? '',
       rawData: normalized,
     );
   }

@@ -138,7 +138,31 @@ extension _TotalPagePdfExtension on _TotalPageState {
       );
     }
 
+    String formatIndianNoDecimals(double value) {
+      final isNegative = value < 0;
+      final absValue = value.abs().round();
+      final intPart = absValue.toString();
+      if (intPart.length <= 3) {
+        return '${isNegative ? '-' : ''}$intPart';
+      }
+      final last3 = intPart.substring(intPart.length - 3);
+      final rest = intPart.substring(0, intPart.length - 3);
+      final buffer = StringBuffer();
+      for (int i = 0; i < rest.length; i++) {
+        buffer.write(rest[i]);
+        final posFromEnd = rest.length - i - 1;
+        if (posFromEnd % 2 == 0 && posFromEnd != 0) {
+          buffer.write(',');
+        }
+      }
+      return '${isNegative ? '-' : ''}${buffer.toString()},$last3';
+    }
+
     String formatRateText(_SelectedItemView item) {
+      final normalizedCategory = item.category.trim().toLowerCase();
+      if (normalizedCategory.contains('gold')) {
+        return formatIndianNoDecimals(item.rate);
+      }
       return PriceCalculator.formatIndianAmount(item.rate);
     }
 
@@ -237,6 +261,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   ),
                   child: pw.Text(
                     'Category',
+                    maxLines: 1,
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                   ),
                 ),
@@ -247,6 +272,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   ),
                   child: pw.Text(
                     'Gross',
+                    maxLines: 1,
                     textAlign: pw.TextAlign.right,
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                   ),
@@ -258,6 +284,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   ),
                   child: pw.Text(
                     'Less',
+                    maxLines: 1,
                     textAlign: pw.TextAlign.right,
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                   ),
@@ -269,6 +296,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   ),
                   child: pw.Text(
                     'Net',
+                    maxLines: 1,
                     textAlign: pw.TextAlign.right,
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                   ),
@@ -284,7 +312,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       horizontal: 6,
                       vertical: 4,
                     ),
-                    child: pw.Text(category, style: labelStyle),
+                    child: pw.Text(category, maxLines: 1, style: labelStyle),
                   ),
                   pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(
@@ -293,6 +321,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     ),
                     child: pw.Text(
                       totals[0].toStringAsFixed(3),
+                      maxLines: 1,
                       textAlign: pw.TextAlign.right,
                       style: labelStyle,
                     ),
@@ -304,6 +333,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     ),
                     child: pw.Text(
                       totals[1].toStringAsFixed(3),
+                      maxLines: 1,
                       textAlign: pw.TextAlign.right,
                       style: labelStyle,
                     ),
@@ -315,6 +345,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     ),
                     child: pw.Text(
                       totals[2].toStringAsFixed(3),
+                      maxLines: 1,
                       textAlign: pw.TextAlign.right,
                       style: labelStyle,
                     ),
@@ -546,13 +577,14 @@ extension _TotalPagePdfExtension on _TotalPageState {
                               tr('S.No', 'क्र.सं.'),
                               tr('Item Name', 'आइटम नाम'),
                               tr('Category', 'श्रेणी'),
-                              tr('Gross Wt', 'ग्रॉस वज़न'),
-                              tr('Less Wt', 'कम वज़न'),
-                              tr('Net Wt', 'नेट वज़न'),
+                              tr('Gross', 'ग्रॉस'),
+                              tr('Less', 'कम'),
+                              tr('Net', 'नेट'),
                               tr('Rate', 'रेट'),
                               tr('Making', 'मेकिंग'),
                               tr('GST', 'जीएसटी'),
                               tr('Additional', 'अतिरिक्त'),
+                              tr('R%', 'R%'),
                               tr('Total', 'कुल'),
                             ].map((text) {
                               return pw.Center(
@@ -586,34 +618,48 @@ extension _TotalPagePdfExtension on _TotalPageState {
                             PriceCalculator.formatIndianAmount(
                               item.additionalAmount,
                             ),
+                            item.returnPurity,
                             PriceCalculator.formatIndianAmount(item.amount),
                           ];
                         }).toList(),
                         headerAlignments: const {
+                          0: pw.Alignment.center,
+                          3: pw.Alignment.centerRight,
+                          4: pw.Alignment.centerRight,
+                          5: pw.Alignment.centerRight,
+                          6: pw.Alignment.centerRight,
+                          7: pw.Alignment.centerRight,
+                          8: pw.Alignment.center,
                           9: pw.Alignment.centerRight,
                           10: pw.Alignment.center,
+                          11: pw.Alignment.centerRight,
                         },
                         cellAlignments: const {
+                          0: pw.Alignment.center,
+                          3: pw.Alignment.centerRight,
+                          4: pw.Alignment.centerRight,
+                          5: pw.Alignment.centerRight,
+                          6: pw.Alignment.centerRight,
+                          7: pw.Alignment.centerRight,
+                          8: pw.Alignment.center,
                           9: pw.Alignment.centerRight,
-                          10: pw.Alignment.centerRight,
+                          10: pw.Alignment.center,
+                          11: pw.Alignment.centerRight,
                         },
                         headerStyle: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
-                          fontSize: 9.2,
+                          fontSize: 8.6,
                         ),
-                        cellStyle: const pw.TextStyle(fontSize: 8.8),
                         cellBuilder: (index, cell, rowNum) {
-                          if (index == 10) {
-                            return pw.FittedBox(
-                              fit: pw.BoxFit.scaleDown,
-                              alignment: pw.Alignment.centerRight,
-                              child: pw.Text(
-                                cell.toString(),
-                                style: const pw.TextStyle(fontSize: 8.8),
-                              ),
-                            );
-                          }
-                          return null;
+                          return pw.Padding(
+                            padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                            child: pw.Text(
+                              cell.toString(),
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: const pw.TextStyle(fontSize: 8.0),
+                            ),
+                          );
                         },
                         border: pw.TableBorder.all(
                           color: PdfColors.black,
@@ -623,17 +669,18 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           color: PdfColors.grey300,
                         ),
                         columnWidths: {
-                          0: const pw.FlexColumnWidth(1),
-                          1: const pw.FlexColumnWidth(2.8),
-                          2: const pw.FlexColumnWidth(1.6),
-                          3: const pw.FlexColumnWidth(1.3),
-                          4: const pw.FlexColumnWidth(1.2),
-                          5: const pw.FlexColumnWidth(1.2),
-                          6: const pw.FlexColumnWidth(1.3),
-                          7: const pw.FlexColumnWidth(1.8),
-                          8: const pw.FlexColumnWidth(0.9),
-                          9: const pw.FlexColumnWidth(1.4),
-                          10: const pw.FlexColumnWidth(2.0),
+                          0: const pw.FlexColumnWidth(0.8),
+                          1: const pw.FlexColumnWidth(2.2),
+                          2: const pw.FlexColumnWidth(1.4),
+                          3: const pw.FlexColumnWidth(1.1),
+                          4: const pw.FlexColumnWidth(1.0),
+                          5: const pw.FlexColumnWidth(1.0),
+                          6: const pw.FlexColumnWidth(1.4),
+                          7: const pw.FlexColumnWidth(1.0),
+                          8: const pw.FlexColumnWidth(1.1),
+                          9: const pw.FlexColumnWidth(1.6),
+                          10: const pw.FlexColumnWidth(0.8),
+                          11: const pw.FlexColumnWidth(1.4),
                         },
                       ),
                     ],
@@ -950,14 +997,21 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   PdfPreviewAction(
                     icon: const Icon(Icons.print),
                     onPressed: (actionContext, build, pageFormat) async {
+                      if (_printingBill) {
+                        return;
+                      }
+                      _printingBill = true;
                       try {
+                        final bytes = await Future<Uint8List>.value(
+                          build(_TotalPageState._billPageFormat),
+                        ).timeout(const Duration(seconds: 25));
                         final didPrint = await Printing.layoutPdf(
-                          onLayout: (pageFormat) => build(pageFormat),
+                          onLayout: (_) async => bytes,
                           name: 'Bill',
                           format: _TotalPageState._billPageFormat,
                           dynamicLayout: true,
                           usePrinterSettings: true,
-                        );
+                        ).timeout(const Duration(seconds: 45));
                         if (!actionContext.mounted) {
                           return;
                         }
@@ -966,6 +1020,17 @@ extension _TotalPagePdfExtension on _TotalPageState {
                             const SnackBar(content: Text('Print cancelled')),
                           );
                         }
+                      } on TimeoutException {
+                        if (!actionContext.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(actionContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Printer is taking too long. Please retry.',
+                            ),
+                          ),
+                        );
                       } catch (error, stackTrace) {
                         debugPrint('TotalPage: failed to print bill: $error');
                         debugPrintStack(stackTrace: stackTrace);
@@ -975,6 +1040,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
                         ScaffoldMessenger.of(actionContext).showSnackBar(
                           const SnackBar(content: Text('Failed to print bill')),
                         );
+                      } finally {
+                        _printingBill = false;
                       }
                     },
                   ),
