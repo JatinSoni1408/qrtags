@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,6 +16,7 @@ import '../l10n/app_localizations.dart';
 import '../utils/sales_notifier.dart';
 import '../utils/selection_notifier.dart';
 import '../features/total/payment_entry_calculator.dart';
+import '../features/total/total_customer_validator.dart';
 import '../utils/price_calculator.dart';
 import '../utils/share_file_namer.dart';
 
@@ -29,7 +30,9 @@ part 'total/total_tts.dart';
 part 'total/total_widgets.dart';
 
 class TotalPage extends StatefulWidget {
-  const TotalPage({super.key});
+  const TotalPage({super.key, required this.canFinishTransaction});
+
+  final bool canFinishTransaction;
 
   @override
   State<TotalPage> createState() => _TotalPageState();
@@ -78,7 +81,8 @@ class _TotalPageState extends State<TotalPage> {
   ];
 
   final TextEditingController _customerNameController = TextEditingController();
-  final TextEditingController _customerMobileController = TextEditingController();
+  final TextEditingController _customerMobileController =
+      TextEditingController();
   final TextEditingController _discountController = TextEditingController();
   final FocusNode _discountFocusNode = FocusNode();
   final List<_PaymentEntryDraft> _paymentEntries = <_PaymentEntryDraft>[];
@@ -87,6 +91,7 @@ class _TotalPageState extends State<TotalPage> {
   String? _activeInvoiceNo;
   bool _finishingTransaction = false;
   bool _printingBill = false;
+  bool _sharingBill = false;
   _TakeawayMode? _activeTakeawayMode;
   late Future<_TotalsData> _totalsFuture;
 
@@ -104,6 +109,22 @@ class _TotalPageState extends State<TotalPage> {
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String? get _customerMobileError =>
+      TotalCustomerValidator.validateMobile(_customerMobileController.text);
+
+  bool _validateCustomerDetails({bool showError = true}) {
+    final error = TotalCustomerValidator.validate(
+      customerName: _customerNameController.text,
+      customerMobile: _customerMobileController.text,
+    );
+    if (error != null && showError && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+    }
+    return error == null;
+  }
 
   String _formatIndianCurrency(String value) {
     final cleaned = value.replaceAll(',', '').trim();
@@ -279,6 +300,7 @@ class _TotalPageState extends State<TotalPage> {
       );
     }
   }
+
   @override
   void initState() {
     super.initState();
@@ -786,14 +808,25 @@ class _TotalPageState extends State<TotalPage> {
     );
   }
 
-
   Future<void> _finishTransaction(
     _TotalsData data,
     double cashReceived,
     double upiReceived,
     double discount,
   ) async {
+    if (!widget.canFinishTransaction) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Only admins can finish transactions')),
+        );
+      }
+      return;
+    }
     if (_finishingTransaction) {
+      return;
+    }
+    if (!_validateCustomerDetails()) {
+      setState(() {});
       return;
     }
     final selectedRaw = List<String>.from(data.selectedRawSnapshot);
@@ -990,9 +1023,14 @@ class _TotalPageState extends State<TotalPage> {
                             TextField(
                               controller: _customerMobileController,
                               keyboardType: TextInputType.phone,
-                              decoration: const InputDecoration(
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(10),
+                              ],
+                              decoration: InputDecoration(
                                 labelText: 'Mobile Number (Optional)',
-                                border: OutlineInputBorder(),
+                                border: const OutlineInputBorder(),
+                                errorText: _customerMobileError,
                               ),
                               onChanged: (value) {
                                 setState(() {});
@@ -1015,481 +1053,526 @@ class _TotalPageState extends State<TotalPage> {
                                 const Expanded(
                                   child: Text(
                                     'Payment Entries',
-                                    style: TextStyle(fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
-                              OutlinedButton.icon(
-                                onPressed: _clearPaymentEntries,
-                                icon: const Icon(Icons.clear_all),
-                                label: const Text('Clear Entries'),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            'Add date, mode and amount for each payment.',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                              fontSize: 12,
+                                OutlinedButton.icon(
+                                  onPressed: _clearPaymentEntries,
+                                  icon: const Icon(Icons.clear_all),
+                                  label: const Text('Clear Entries'),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          ..._paymentEntries.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final paymentEntry = entry.value;
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
+                            Text(
+                              'Add date, mode and amount for each payment.',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            ..._paymentEntries.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final paymentEntry = entry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outlineVariant,
+                                    ),
                                     color: Theme.of(
                                       context,
-                                    ).colorScheme.outlineVariant,
+                                    ).colorScheme.surfaceContainerLowest,
                                   ),
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.surfaceContainerLowest,
-                                ),
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final useStackedFields =
-                                        constraints.maxWidth < 520;
-                                    final dateField = InkWell(
-                                      onTap: () => _pickPaymentDate(index),
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: InputDecorator(
-                                        decoration: const InputDecoration(
-                                          labelText: 'Date',
-                                        ),
-                                        child: Text(
-                                          _formatDate(paymentEntry.date),
-                                        ),
-                                      ),
-                                    );
-                                    final modeField =
-                                        DropdownButtonFormField<String>(
-                                          initialValue: paymentEntry.mode,
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final useStackedFields =
+                                          constraints.maxWidth < 520;
+                                      final dateField = InkWell(
+                                        onTap: () => _pickPaymentDate(index),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: InputDecorator(
                                           decoration: const InputDecoration(
-                                            labelText: 'Mode',
+                                            labelText: 'Date',
                                           ),
-                                          items: const [
-                                            DropdownMenuItem(
-                                              value: 'Cash',
-                                              child: Text('Cash'),
+                                          child: Text(
+                                            _formatDate(paymentEntry.date),
+                                          ),
+                                        ),
+                                      );
+                                      final modeField =
+                                          DropdownButtonFormField<String>(
+                                            initialValue: paymentEntry.mode,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Mode',
                                             ),
-                                            DropdownMenuItem(
-                                              value: 'UPI',
-                                              child: Text('UPI'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'Banking',
-                                              child: Text('Banking'),
-                                            ),
-                                          ],
-                                          onChanged: (value) {
-                                            if (value == null) {
-                                              return;
+                                            items: const [
+                                              DropdownMenuItem(
+                                                value: 'Cash',
+                                                child: Text('Cash'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value: 'UPI',
+                                                child: Text('UPI'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value: 'Banking',
+                                                child: Text('Banking'),
+                                              ),
+                                            ],
+                                            onChanged: (value) {
+                                              if (value == null) {
+                                                return;
+                                              }
+                                              setState(() {
+                                                paymentEntry.mode = value;
+                                                _enforceUpiLimit(paymentEntry);
+                                              });
+                                              unawaited(_saveDraft());
+                                            },
+                                          );
+                                      final amountField = Focus(
+                                        onFocusChange: (hasFocus) {
+                                          if (!hasFocus &&
+                                              paymentEntry
+                                                  .amountController
+                                                  .text
+                                                  .isNotEmpty) {
+                                            final plainText = paymentEntry
+                                                .amountController
+                                                .text;
+                                            final formatted =
+                                                _formatIndianCurrency(
+                                                  plainText,
+                                                );
+                                            if (formatted != plainText) {
+                                              paymentEntry
+                                                      .amountController
+                                                      .text =
+                                                  formatted;
                                             }
-                                            setState(() {
-                                              paymentEntry.mode = value;
-                                              _enforceUpiLimit(
-                                                paymentEntry,
-                                              );
-                                            });
+                                          } else if (hasFocus &&
+                                              paymentEntry
+                                                  .amountController
+                                                  .text
+                                                  .isNotEmpty) {
+                                            final formattedText = paymentEntry
+                                                .amountController
+                                                .text;
+                                            final plain = formattedText
+                                                .replaceAll(',', '');
+                                            if (plain != formattedText) {
+                                              paymentEntry
+                                                      .amountController
+                                                      .text =
+                                                  plain;
+                                            }
+                                          }
+                                        },
+                                        child: TextField(
+                                          controller:
+                                              paymentEntry.amountController,
+                                          focusNode:
+                                              paymentEntry.amountFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration:
+                                              const InputDecoration(
+                                                labelText: 'Amount',
+                                              ).copyWith(
+                                                helperText:
+                                                    paymentEntry.mode == 'UPI'
+                                                    ? 'Max 100000.00'
+                                                    : null,
+                                              ),
+                                          onChanged: (value) {
+                                            _enforceUpiLimit(paymentEntry);
+                                            setState(() {});
                                             unawaited(_saveDraft());
                                           },
-                                        );
-                                    final amountField = Focus(
-                                      onFocusChange: (hasFocus) {
-                                        if (!hasFocus && paymentEntry.amountController.text.isNotEmpty) {
-                                          final plainText = paymentEntry.amountController.text;
-                                          final formatted = _formatIndianCurrency(plainText);
-                                          if (formatted != plainText) {
-                                            paymentEntry.amountController.text = formatted;
-                                          }
-                                        } else if (hasFocus && paymentEntry.amountController.text.isNotEmpty) {
-                                          final formattedText = paymentEntry.amountController.text;
-                                          final plain = formattedText.replaceAll(',', '');
-                                          if (plain != formattedText) {
-                                            paymentEntry.amountController.text = plain;
-                                          }
-                                        }
-                                      },
-                                      child: TextField(
-                                        controller: paymentEntry.amountController,
-                                        focusNode: paymentEntry.amountFocusNode,
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                              decimal: true,
-                                            ),
-                                        decoration:
-                                            const InputDecoration(
-                                              labelText: 'Amount',
-                                            ).copyWith(
-                                              helperText:
-                                                  paymentEntry.mode == 'UPI'
-                                                  ? 'Max 100000.00'
-                                                  : null,
-                                            ),
-                                        onChanged: (value) {
-                                          _enforceUpiLimit(paymentEntry);
-                                          setState(() {});
-                                          unawaited(_saveDraft());
-                                        },
-                                      ),
-                                    );
-
-                                    return Column(
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              'Entry ${index + 1}',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            const Spacer(),
-                                            IconButton(
-                                              tooltip: 'Delete row',
-                                              onPressed:
-                                                  _paymentEntries.length == 1
-                                                  ? null
-                                                  : () =>
-                                                        _removePaymentEntry(
-                                                          index,
-                                                        ),
-                                              icon: const Icon(
-                                                Icons.delete_outline,
-                                              ),
-                                            ),
-                                          ],
                                         ),
-                                        const SizedBox(height: 6),
-                                        if (useStackedFields) ...[
-                                          dateField,
-                                          const SizedBox(height: 8),
-                                          modeField,
-                                          const SizedBox(height: 8),
-                                          amountField,
-                                        ] else
+                                      );
+
+                                      return Column(
+                                        children: [
                                           Row(
                                             children: [
-                                              Expanded(child: dateField),
-                                              const SizedBox(width: 8),
-                                              Expanded(child: modeField),
-                                              const SizedBox(width: 8),
-                                              Expanded(child: amountField),
+                                              Text(
+                                                'Entry ${index + 1}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const Spacer(),
+                                              IconButton(
+                                                tooltip: 'Delete row',
+                                                onPressed:
+                                                    _paymentEntries.length == 1
+                                                    ? null
+                                                    : () => _removePaymentEntry(
+                                                        index,
+                                                      ),
+                                                icon: const Icon(
+                                                  Icons.delete_outline,
+                                                ),
+                                              ),
                                             ],
                                           ),
-                                      ],
+                                          const SizedBox(height: 6),
+                                          if (useStackedFields) ...[
+                                            dateField,
+                                            const SizedBox(height: 8),
+                                            modeField,
+                                            const SizedBox(height: 8),
+                                            amountField,
+                                          ] else
+                                            Row(
+                                              children: [
+                                                Expanded(child: dateField),
+                                                const SizedBox(width: 8),
+                                                Expanded(child: modeField),
+                                                const SizedBox(width: 8),
+                                                Expanded(child: amountField),
+                                              ],
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _addPaymentEntry,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Entry'),
+                            ),
+                            const SizedBox(height: 4),
+                            if (data.discountEnabled) ...[
+                              Focus(
+                                onFocusChange: (hasFocus) {
+                                  if (!hasFocus &&
+                                      _discountController.text.isNotEmpty) {
+                                    final plainText = _discountController.text;
+                                    final formatted = _formatIndianCurrency(
+                                      plainText,
                                     );
+                                    if (formatted != plainText) {
+                                      _discountController.text = formatted;
+                                    }
+                                  } else if (hasFocus &&
+                                      _discountController.text.isNotEmpty) {
+                                    final formattedText =
+                                        _discountController.text;
+                                    final plain = formattedText.replaceAll(
+                                      ',',
+                                      '',
+                                    );
+                                    if (plain != formattedText) {
+                                      _discountController.text = plain;
+                                    }
+                                  }
+                                },
+                                child: TextField(
+                                  controller: _discountController,
+                                  focusNode: _discountFocusNode,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Discount',
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {});
+                                    unawaited(_saveDraft());
                                   },
                                 ),
                               ),
-                            );
-                          }),
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _addPaymentEntry,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Entry'),
-                          ),
-                          const SizedBox(height: 4),
-                          if (data.discountEnabled) ...[
-                            Focus(
-                              onFocusChange: (hasFocus) {
-                                if (!hasFocus && _discountController.text.isNotEmpty) {
-                                  final plainText = _discountController.text;
-                                  final formatted = _formatIndianCurrency(plainText);
-                                  if (formatted != plainText) {
-                                    _discountController.text = formatted;
-                                  }
-                                } else if (hasFocus && _discountController.text.isNotEmpty) {
-                                  final formattedText = _discountController.text;
-                                  final plain = formattedText.replaceAll(',', '');
-                                  if (plain != formattedText) {
-                                    _discountController.text = plain;
-                                  }
-                                }
-                              },
-                              child: TextField(
-                                controller: _discountController,
-                                focusNode: _discountFocusNode,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Discount',
-                                ),
-                                onChanged: (value) {
-                                  setState(() {});
-                                  unawaited(_saveDraft());
-                                },
+                              const SizedBox(height: 8),
+                            ],
+                            Text(
+                              'Selected Total: ${PriceCalculator.formatIndianAmount(data.selectedTotal)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                             const SizedBox(height: 8),
-                          ],
-                          Text(
-                            'Selected Total: ${PriceCalculator.formatIndianAmount(data.selectedTotal)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Old Total: ${PriceCalculator.formatIndianAmount(data.oldTotal)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Net Payable: ${PriceCalculator.formatIndianAmount(netPayable)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              OutlinedButton(
-                                onPressed: () => unawaited(
-                                  _speakDueAmount(diff: diff, hindi: false),
-                                ),
-                                child: const Text('EN'),
-                              ),
-                              const SizedBox(width: 6),
-                              OutlinedButton(
-                                onPressed: () => unawaited(
-                                  _speakDueAmount(diff: diff, hindi: true),
-                                ),
-                                child: Text(l10n.hindiShort),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Center(
-                                  child: Text(
-                                    isSettled
-                                        ? l10n.transactionSettled
-                                        : '$dueLabel: $dueText',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: dueColor,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (data.selectedItems.isNotEmpty) ...[
-                            const SizedBox(height: 12),
                             Text(
-                              'Takeaway Optimizer (Budget = Received Amount)',
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                              'Old Total: ${PriceCalculator.formatIndianAmount(data.oldTotal)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Net Payable: ${PriceCalculator.formatIndianAmount(netPayable)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      setState(() {
-                                        _activeTakeawayMode =
-                                            _TakeawayMode.maxItems;
-                                      });
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor:
-                                          _activeTakeawayMode ==
-                                              _TakeawayMode.maxItems
-                                          ? theme.colorScheme.primaryContainer
-                                          : null,
-                                    ),
-                                    icon: const Icon(Icons.format_list_numbered),
-                                    label: const Text('Max Items'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      setState(() {
-                                        _activeTakeawayMode =
-                                            _TakeawayMode.maxWeight;
-                                      });
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor:
-                                          _activeTakeawayMode ==
-                                              _TakeawayMode.maxWeight
-                                          ? theme.colorScheme.primaryContainer
-                                          : null,
-                                    ),
-                                    icon: const Icon(Icons.scale),
-                                    label: const Text('Max Weight'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
                                 OutlinedButton(
-                                  onPressed: _activeTakeawayMode == null
-                                      ? null
-                                      : () {
-                                          setState(() {
-                                            _activeTakeawayMode = null;
-                                          });
-                                        },
-                                  child: const Text('Clear'),
+                                  onPressed: () => unawaited(
+                                    _speakDueAmount(diff: diff, hindi: false),
+                                  ),
+                                  child: const Text('EN'),
+                                ),
+                                const SizedBox(width: 6),
+                                OutlinedButton(
+                                  onPressed: () => unawaited(
+                                    _speakDueAmount(diff: diff, hindi: true),
+                                  ),
+                                  child: Text(l10n.hindiShort),
                                 ),
                               ],
                             ),
-                            _buildTakeawaySuggestionPanel(
-                              items: data.selectedItems,
-                              budget: totalReceived,
-                              theme: theme,
+                            const SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      isSettled
+                                          ? l10n.transactionSettled
+                                          : '$dueLabel: $dueText',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: dueColor,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                          const SizedBox(height: 12),
-                          if (canGenerateQr)
-                            OutlinedButton.icon(
-                              onPressed: () => _showPaymentQr(
-                                diff,
-                                data.selectedCount.toString(),
+                            if (data.selectedItems.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                'Takeaway Optimizer (Budget = Received Amount)',
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              icon: const Icon(Icons.qr_code),
-                              label: const Text('Generate Payment QR'),
-                            ),
-                          const SizedBox(height: 8),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (data.selectedItems.isNotEmpty) ...[
-                    const Text(
-                      'Selected Items',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ..._buildSelectedSections(context, data.selectedItems),
-                  ],
-                  const SizedBox(height: 12),
-                  if (data.oldItems.isNotEmpty) ...[
-                    const Text(
-                      'Old Items',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Item',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Net Wt',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Amount',
-                            textAlign: TextAlign.right,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    ...data.oldItems.map((item) {
-                      final isDark =
-                          Theme.of(context).brightness == Brightness.dark;
-                      final titleColor = isDark ? Colors.white : Colors.black87;
-                      final amountColor = isDark
-                          ? const Color(0xFFFF8A80)
-                          : Colors.red.shade700;
-                      final formulaBaseColor = isDark
-                          ? Colors.white70
-                          : Colors.black87;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
+                              const SizedBox(height: 8),
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      item.title,
-                                      style: TextStyle(color: titleColor),
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        setState(() {
+                                          _activeTakeawayMode =
+                                              _TakeawayMode.maxItems;
+                                        });
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor:
+                                            _activeTakeawayMode ==
+                                                _TakeawayMode.maxItems
+                                            ? theme.colorScheme.primaryContainer
+                                            : null,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.format_list_numbered,
+                                      ),
+                                      label: const Text('Max Items'),
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Expanded(
-                                    child: Text(
-                                      item.netWeight.toStringAsFixed(3),
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(color: titleColor),
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        setState(() {
+                                          _activeTakeawayMode =
+                                              _TakeawayMode.maxWeight;
+                                        });
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor:
+                                            _activeTakeawayMode ==
+                                                _TakeawayMode.maxWeight
+                                            ? theme.colorScheme.primaryContainer
+                                            : null,
+                                      ),
+                                      icon: const Icon(Icons.scale),
+                                      label: const Text('Max Weight'),
                                     ),
                                   ),
-                                  Expanded(
-                                    child: Text(
-                                      PriceCalculator.formatIndianAmount(
-                                        item.amount,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: amountColor,
-                                      ),
-                                    ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton(
+                                    onPressed: _activeTakeawayMode == null
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _activeTakeawayMode = null;
+                                            });
+                                          },
+                                    child: const Text('Clear'),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 6),
-                              RichText(
-                                text: TextSpan(
-                                  style: TextStyle(color: formulaBaseColor),
+                              _buildTakeawaySuggestionPanel(
+                                items: data.selectedItems,
+                                budget: totalReceived,
+                                theme: theme,
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            if (canGenerateQr)
+                              OutlinedButton.icon(
+                                onPressed: () => _showPaymentQr(
+                                  diff,
+                                  data.selectedCount.toString(),
+                                ),
+                                icon: const Icon(Icons.qr_code),
+                                label: const Text('Generate Payment QR'),
+                              ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (data.selectedItems.isNotEmpty) ...[
+                      const Text(
+                        'Selected Items',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._buildSelectedSections(context, data.selectedItems),
+                    ],
+                    const SizedBox(height: 12),
+                    if (data.oldItems.isNotEmpty) ...[
+                      const Text(
+                        'Old Items',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Item',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Net Wt',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Amount',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ...data.oldItems.map((item) {
+                        final isDark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        final titleColor = isDark
+                            ? Colors.white
+                            : Colors.black87;
+                        final amountColor = isDark
+                            ? const Color(0xFFFF8A80)
+                            : Colors.red.shade700;
+                        final formulaBaseColor = isDark
+                            ? Colors.white70
+                            : Colors.black87;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
                                   children: [
-                                    TextSpan(text: item.formulaPrefix),
-                                    TextSpan(
-                                      text: item.formulaRate,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: titleColor,
+                                    Expanded(
+                                      child: Text(
+                                        item.title,
+                                        style: TextStyle(color: titleColor),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        item.netWeight.toStringAsFixed(3),
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: titleColor),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        PriceCalculator.formatIndianAmount(
+                                          item.amount,
+                                        ),
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: amountColor,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                RichText(
+                                  text: TextSpan(
+                                    style: TextStyle(color: formulaBaseColor),
+                                    children: [
+                                      TextSpan(text: item.formulaPrefix),
+                                      TextSpan(
+                                        text: item.formulaRate,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: titleColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ],
                   ],
-                ],
-              ),
+                ),
               ),
             ),
             _buildStickyTotalsBar(
@@ -1509,4 +1592,3 @@ class _TotalPageState extends State<TotalPage> {
     );
   }
 }
-

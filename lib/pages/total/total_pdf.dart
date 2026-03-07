@@ -2,7 +2,8 @@ part of '../total_page.dart';
 
 extension _TotalPagePdfExtension on _TotalPageState {
   String _formatInvoiceNumber(DateTime now, int sequence) {
-    final datePart = '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}';
+    final datePart =
+        '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}';
     final sequencePart = sequence.toString().padLeft(4, '0');
     return 'INV-$datePart-$sequencePart';
   }
@@ -50,6 +51,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
   ) async {
     final doc = pw.Document();
     final effectivePageFormat = pageFormat ?? _TotalPageState._billPageFormat;
+    final normalizedCustomerName = customerName.trim();
+    final normalizedCustomerMobile = customerMobile.trim();
     String tr(String english, String hindi) => english;
     final now = DateTime.now();
     final netPayable = data.selectedTotal - data.oldTotal - discount;
@@ -180,6 +183,17 @@ extension _TotalPagePdfExtension on _TotalPageState {
         return 'T:${PriceCalculator.formatIndianAmount(item.makingCharge)}';
       }
       return PriceCalculator.formatIndianAmount(item.makingCharge);
+    }
+
+    String formatReturnPurityText(_SelectedItemView item) {
+      final normalizedCategory = item.category.trim().toLowerCase();
+      if (normalizedCategory.contains('gold22kt')) {
+        return '22kt';
+      }
+      if (normalizedCategory.contains('gold18kt')) {
+        return '18kt';
+      }
+      return item.returnPurity;
     }
 
     final additionalTypeTotals = <String, double>{};
@@ -497,20 +511,20 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                 pw.SizedBox(height: 6),
                                 keyValue(
                                   tr('Customer Name', 'ग्राहक नाम'),
-                                  customerName.isEmpty
+                                  normalizedCustomerName.isEmpty
                                       ? '________________'
-                                      : customerName,
+                                      : normalizedCustomerName,
                                 ),
                                 keyValueWidget(
                                   tr('Customer Mobile', 'मोबाइल नंबर'),
-                                  customerMobile.isEmpty
+                                  normalizedCustomerMobile.isEmpty
                                       ? pw.Text(
                                           '________________',
                                           textAlign: pw.TextAlign.right,
                                           style: valueStyle,
                                         )
                                       : pw.Text(
-                                          customerMobile,
+                                          normalizedCustomerMobile,
                                           textAlign: pw.TextAlign.right,
                                           style: valueStyle,
                                         ),
@@ -618,7 +632,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                             PriceCalculator.formatIndianAmount(
                               item.additionalAmount,
                             ),
-                            item.returnPurity,
+                            formatReturnPurityText(item),
                             PriceCalculator.formatIndianAmount(item.amount),
                           ];
                         }).toList(),
@@ -652,7 +666,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
                         ),
                         cellBuilder: (index, cell, rowNum) {
                           return pw.Padding(
-                            padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                            padding: const pw.EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 1,
+                            ),
                             child: pw.Text(
                               cell.toString(),
                               maxLines: 1,
@@ -760,7 +777,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                   ),
                                 ),
                                 keyValue(
-                                  tr('Old Gold Deduction', 'पुराना सोना कटौती'),
+                                  tr(
+                                    'Old Items Deduction',
+                                    'पुराना सोना कटौती',
+                                  ),
                                   '-${PriceCalculator.formatIndianAmount(data.oldTotal)}',
                                 ),
                                 if (discount > 0)
@@ -769,7 +789,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                     '-${PriceCalculator.formatIndianAmount(discount)}',
                                   ),
                                 keyValue(
-                                  tr('GST Total', 'जीएसटी कुल'),
+                                  tr('Total GST Paid', 'जीएसटी कुल'),
                                   PriceCalculator.formatIndianAmount(
                                     data.selectedGstTotal,
                                   ),
@@ -965,14 +985,81 @@ extension _TotalPagePdfExtension on _TotalPageState {
     return doc.save();
   }
 
-
   Future<void> _previewTotalsPdf(
     _TotalsData data,
     double cashReceived,
     double upiReceived,
     double discount,
   ) async {
+    if (!_validateCustomerDetails()) {
+      return;
+    }
     final paymentEntriesSnapshot = _buildPaymentEntryRowsForPdf();
+    final customerName = _customerNameController.text.trim();
+    final customerMobile = _customerMobileController.text.trim();
+    String buildShareFileName() {
+      final safeName = customerName
+          .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), '')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), '_');
+      final safeMobile = customerMobile.replaceAll(RegExp(r'[^0-9]'), '');
+      if (safeName.isNotEmpty && safeMobile.isNotEmpty) {
+        return '$safeName-$safeMobile.pdf';
+      }
+      if (safeName.isNotEmpty) {
+        return '$safeName.pdf';
+      }
+      if (safeMobile.isNotEmpty) {
+        return '$safeMobile.pdf';
+      }
+      final batch = ShareFileNamer.startBatch(prefix: 'bl', extension: 'pdf');
+      return batch.nextName();
+    }
+
+    Future<void> shareBill({
+      required BuildContext actionContext,
+      required LayoutCallback build,
+      required String shareText,
+      String? subject,
+    }) async {
+      if (_printingBill || _sharingBill) {
+        return;
+      }
+      _sharingBill = true;
+      try {
+        final bytes = await Future<Uint8List>.value(
+          build(_TotalPageState._billPageFormat),
+        ).timeout(const Duration(seconds: 25));
+        final fileName = buildShareFileName();
+        await Share.shareXFiles(
+          [XFile.fromData(bytes, name: fileName, mimeType: 'application/pdf')],
+          fileNameOverrides: [fileName],
+          text: shareText,
+          subject: subject,
+        );
+      } on TimeoutException {
+        if (!actionContext.mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(actionContext).showSnackBar(
+          const SnackBar(
+            content: Text('Preparing bill took too long. Please retry.'),
+          ),
+        );
+      } catch (error, stackTrace) {
+        debugPrint('TotalPage: failed to share bill: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        if (!actionContext.mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(
+          actionContext,
+        ).showSnackBar(const SnackBar(content: Text('Failed to share bill')));
+      } finally {
+        _sharingBill = false;
+      }
+    }
+
     if (!mounted) {
       return;
     }
@@ -997,7 +1084,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   PdfPreviewAction(
                     icon: const Icon(Icons.print),
                     onPressed: (actionContext, build, pageFormat) async {
-                      if (_printingBill) {
+                      if (_printingBill || _sharingBill) {
                         return;
                       }
                       _printingBill = true;
@@ -1045,6 +1132,16 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       }
                     },
                   ),
+                  PdfPreviewAction(
+                    icon: const Icon(Icons.share),
+                    onPressed: (actionContext, build, pageFormat) async {
+                      await shareBill(
+                        actionContext: actionContext,
+                        build: build,
+                        shareText: 'Bill',
+                      );
+                    },
+                  ),
                 ],
                 build: (pageFormat) => _buildTotalsPdfBytes(
                   data,
@@ -1052,8 +1149,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   upiReceived,
                   discount,
                   paymentEntriesSnapshot,
-                  '',
-                  '',
+                  customerName,
+                  customerMobile,
                   pageFormat,
                 ),
               ),

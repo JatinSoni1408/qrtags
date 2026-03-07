@@ -83,37 +83,35 @@ extension _TotalPageStickyBarExtension on _TotalPageState {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => _previewTotalsPdf(
-                data,
-                cashReceived,
-                upiReceived,
-                discount,
-              ),
+              onPressed: () =>
+                  _previewTotalsPdf(data, cashReceived, upiReceived, discount),
               icon: const Icon(Icons.visibility),
               label: const Text('Preview Bill'),
             ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: _finishingTransaction
-                  ? null
-                  : () => _finishTransaction(
-                      data,
-                      cashReceived,
-                      upiReceived,
-                      discount,
-                    ),
-              icon: _finishingTransaction
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+            if (widget.canFinishTransaction) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: _finishingTransaction
+                    ? null
+                    : () => _finishTransaction(
+                        data,
+                        cashReceived,
+                        upiReceived,
+                        discount,
                       ),
-                    )
-                  : const Icon(Icons.check_circle),
-              label: const Text('Finish Transaction'),
-            ),
+                icon: _finishingTransaction
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_circle),
+                label: const Text('Finish Transaction'),
+              ),
+            ],
           ],
         ),
       ),
