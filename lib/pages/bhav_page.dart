@@ -65,8 +65,12 @@ class _BhavPageState extends State<BhavPage> {
     final fixed = absValue.toStringAsFixed(decimals);
     final parts = fixed.split('.');
     final intPart = parts[0];
+    final decPart = parts.length > 1 ? parts[1] : null;
     if (intPart.length <= 3) {
-      return '${isNegative ? '-' : ''}$fixed';
+      if (decimals == 0 || decPart == null) {
+        return '${isNegative ? '-' : ''}$intPart';
+      }
+      return '${isNegative ? '-' : ''}$intPart.$decPart';
     }
     final last3 = intPart.substring(intPart.length - 3);
     final rest = intPart.substring(0, intPart.length - 3);
@@ -78,7 +82,10 @@ class _BhavPageState extends State<BhavPage> {
         buffer.write(',');
       }
     }
-    return '${isNegative ? '-' : ''}${buffer.toString()},$last3.${parts[1]}';
+    if (decimals == 0 || decPart == null) {
+      return '${isNegative ? '-' : ''}${buffer.toString()},$last3';
+    }
+    return '${isNegative ? '-' : ''}${buffer.toString()},$last3.$decPart';
   }
 
   Widget _rateRow({
@@ -170,38 +177,38 @@ class _BhavPageState extends State<BhavPage> {
                     const SizedBox(height: 8),
                     _rateRow(
                       context: context,
-                      label: 'Gold24kt Rate Approx',
-                      value: _formatIndian(_rateGold24),
+                      label: 'Gold24kt Rate (Approx)',
+                      value: _formatIndian(_rateGold24, decimals: 0),
                     ),
                     const SizedBox(height: 6),
                     _rateRow(
                       context: context,
                       label: 'Gold22kt Rate',
-                      value: _formatIndian(_rateGold22),
+                      value: _formatIndian(_rateGold22, decimals: 0),
                     ),
                     const SizedBox(height: 6),
                     _rateRow(
                       context: context,
                       label: 'Gold18kt Rate',
-                      value: _formatIndian(_rateGold18),
+                      value: _formatIndian(_rateGold18, decimals: 0),
                     ),
                     const SizedBox(height: 6),
                     _rateRow(
                       context: context,
-                      label: 'Silver Rate Approx',
+                      label: 'Silver Rate (Approx)',
                       value: _formatIndian(_rateSilver),
                     ),
                     const SizedBox(height: 6),
                     _rateRow(
                       context: context,
                       label: 'Return Rate 22kt',
-                      value: _formatIndian(return22),
+                      value: _formatIndian(return22, decimals: 0),
                     ),
                     const SizedBox(height: 6),
                     _rateRow(
                       context: context,
                       label: 'Return Rate 18kt',
-                      value: _formatIndian(return18),
+                      value: _formatIndian(return18, decimals: 0),
                     ),
                     const SizedBox(height: 12),
                     const Center(

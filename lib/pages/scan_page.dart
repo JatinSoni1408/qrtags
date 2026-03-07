@@ -551,112 +551,47 @@ class _ScanPageState extends State<ScanPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.primaryContainer,
-                              child: Icon(
-                                Icons.calculate_outlined,
-                                size: 20,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onPrimaryContainer,
-                              ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<_ScanSortMode>(
+                          initialValue: _sortMode,
+                          decoration: const InputDecoration(labelText: 'Sort'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: _ScanSortMode.newestFirst,
+                              child: Text('Newest First'),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Manual Calculator',
-                                    style: Theme.of(context).textTheme.titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                  ),
-                                  Text(
-                                    'Add item manually when QR is not available',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            DropdownMenuItem(
+                              value: _ScanSortMode.oldestFirst,
+                              child: Text('Oldest First'),
                             ),
-                            const SizedBox(width: 8),
-                            FilledButton.icon(
-                              onPressed: _showManualCalculator,
-                              icon: const Icon(Icons.add),
-                              label: const Text('Open'),
+                            DropdownMenuItem(
+                              value: _ScanSortMode.nameAsc,
+                              child: Text('Name A-Z'),
                             ),
                           ],
+                          onChanged: (value) {
+                            if (value == null) {
+                              return;
+                            }
+                            setState(() {
+                              _sortMode = value;
+                            });
+                          },
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<_ScanSortMode>(
-                                initialValue: _sortMode,
-                                decoration: const InputDecoration(
-                                  labelText: 'Sort',
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: _ScanSortMode.newestFirst,
-                                    child: Text('Newest First'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: _ScanSortMode.oldestFirst,
-                                    child: Text('Oldest First'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: _ScanSortMode.nameAsc,
-                                    child: Text('Name A-Z'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  if (value == null) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    _sortMode = value;
-                                  });
-                                },
-                              ),
-                            ),
-                            if (_scannedResults.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              OutlinedButton.icon(
-                                onPressed: _resetScannedItems,
-                                icon: const Icon(Icons.restart_alt),
-                                label: const Text('Reset'),
-                              ),
-                            ],
-                          ],
+                      ),
+                      if (_scannedResults.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: _resetScannedItems,
+                          icon: const Icon(Icons.restart_alt),
+                          label: const Text('Reset'),
                         ),
                       ],
-                    ),
+                    ],
                   ),
+                  const SizedBox(height: 10),
                   if (_scannedResults.isNotEmpty) ...[
                     ..._buildGroupedItems(),
                     const SizedBox(height: 8),
@@ -667,14 +602,29 @@ class _ScanPageState extends State<ScanPage> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isScanning ? null : _scanWithCamera,
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('Scan QR'),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isScanning ? null : _scanWithCamera,
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Scan QR'),
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _showManualCalculator,
+                        icon: const Icon(Icons.edit_note),
+                        label: const Text('Add New Item Manually'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1073,6 +1023,13 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     'Polishing',
     'Brushing',
   ];
+  static const List<String> _returnPurityOptions = [
+    '50%',
+    '60%',
+    '70%',
+    '80%',
+    '92%',
+  ];
 
   final TextEditingController _itemNameController = TextEditingController();
   final TextEditingController _makingChargeController = TextEditingController();
@@ -1095,6 +1052,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
 
   String? _selectedCategory;
   String? _selectedMakingType;
+  String? _selectedReturnPurity;
   bool _loading = true;
   bool _submitted = false;
   bool _usingFallbackMasterData = false;
@@ -1195,6 +1153,12 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     final makingList = _makingTypesForCategory(_selectedCategory);
     if (making != null && making.isNotEmpty && makingList.contains(making)) {
       _selectedMakingType = making;
+    }
+    final returnPurity = data['returnPurity']?.toString().trim();
+    if (returnPurity != null &&
+        returnPurity.isNotEmpty &&
+        _returnPurityOptions.contains(returnPurity)) {
+      _selectedReturnPurity = returnPurity;
     }
     _itemNameController.text = data['itemName']?.toString() ?? '';
     _makingChargeController.text = data['makingCharge']?.toString() ?? '';
@@ -1342,6 +1306,10 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     if ((_selectedMakingType ?? '').trim().isEmpty) {
       missingFields.add('Making Type');
     }
+    if (_selectedCategory == 'Silver' &&
+        (_selectedReturnPurity ?? '').trim().isEmpty) {
+      missingFields.add('Return Purity');
+    }
     if (_makingChargeController.text.trim().isEmpty) {
       missingFields.add('Making Charge');
     }
@@ -1421,6 +1389,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
       'grossWeight': _grossWeightController.text.trim(),
       'lessWeight': _lessWeightController.text.trim(),
       'netWeight': _netWeightController.text.trim(),
+      'returnPurity': (_selectedReturnPurity ?? '').trim(),
       'lessCategories': lessEntries,
       'additionalTypes': additionalEntries,
     };
@@ -1467,6 +1436,9 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
                   setState(() {
                     _selectedCategory = value;
                     _selectedMakingType = null;
+                    if (_selectedCategory != 'Silver') {
+                      _selectedReturnPurity = null;
+                    }
                   });
                 },
               ),
@@ -1564,6 +1536,36 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
                   ),
                 ],
               ),
+              if (_selectedCategory == 'Silver') ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedReturnPurity,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(
+                        labelText: 'Return Purity (R%)',
+                      ).copyWith(
+                        errorText:
+                            _submitted &&
+                                (_selectedReturnPurity ?? '').trim().isEmpty
+                            ? 'Required for Silver items'
+                            : null,
+                      ),
+                  items: _returnPurityOptions
+                      .map(
+                        (value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedReturnPurity = value;
+                    });
+                  },
+                ),
+              ],
               const SizedBox(height: 8),
               SharedFormSectionHeader(
                 title: 'Less Categories',
@@ -2224,5 +2226,3 @@ class _ScanResultCardState extends State<_ScanResultCard> {
     );
   }
 }
-
-

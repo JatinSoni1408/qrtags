@@ -237,6 +237,14 @@ class _OldPageState extends State<OldPage> {
       ).showSnackBar(const SnackBar(content: Text('Return Bhav is required')));
       return;
     }
+    if (_selectedReturnBhav == 'Gold18kt') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gold18kt Return Bhav is disabled for now'),
+        ),
+      );
+      return;
+    }
     if (gross == null) {
       ScaffoldMessenger.of(
         context,
@@ -247,6 +255,14 @@ class _OldPageState extends State<OldPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Less Weight is required (0.000 allowed)'),
+        ),
+      );
+      return;
+    }
+    if (less >= gross) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Less Weight must be less than Gross Weight'),
         ),
       );
       return;
@@ -322,28 +338,7 @@ class _OldPageState extends State<OldPage> {
     if (_items.isEmpty) {
       return;
     }
-    final shouldClear = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Clear all items?'),
-          content: const Text(
-            'This will remove all items from the old list.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Clear'),
-            ),
-          ],
-        );
-      },
-    );
-    if (shouldClear != true || !mounted) {
+    if (!mounted) {
       return;
     }
     setState(() {
@@ -667,17 +662,24 @@ class _OldPageState extends State<OldPage> {
                               child: DropdownButtonFormField<String>(
                                 initialValue: _selectedReturnBhav,
                                 isExpanded: true,
-                                items: _returnBhavOptions
-                                    .map(
-                                      (b) => DropdownMenuItem<String>(
-                                        value: b,
-                                        child: Text(
-                                          '$b ${_formatIndianForReturnBhav(b)}',
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
+                                items: _returnBhavOptions.map((b) {
+                                  final disabled = b == 'Gold18kt';
+                                  return DropdownMenuItem<String>(
+                                          value: b,
+                                          enabled: !disabled,
+                                          child: Text(
+                                            '$b ${_formatIndianForReturnBhav(b)}${disabled ? ' (Disabled)' : ''}',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: disabled
+                                                ? TextStyle(
+                                              color: Theme.of(
+                                                context,
+                                              ).disabledColor,
+                                            )
+                                          : null,
+                                    ),
+                                  );
+                                }).toList(),
                                 onChanged: (value) {
                                   setState(() {
                                     _selectedReturnBhav = value;
@@ -747,12 +749,10 @@ class _OldPageState extends State<OldPage> {
                                       0.0;
                                   _lessWeightController.text = value
                                       .toStringAsFixed(3);
-                                  _lessWeightController.selection =
-                                      TextSelection.collapsed(
-                                        offset: _lessWeightController
-                                            .text
-                                            .length,
-                                      );
+                                  _lessWeightController
+                                      .selection = TextSelection.collapsed(
+                                    offset: _lessWeightController.text.length,
+                                  );
                                   _updateNetWeight();
                                 },
                                 decoration: const InputDecoration(

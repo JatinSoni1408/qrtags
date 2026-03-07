@@ -220,7 +220,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: _AppTheme.lightTheme,
       darkTheme: _AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       builder: (context, child) {
@@ -387,7 +387,9 @@ class _ConnectivityGateState extends State<_ConnectivityGate> {
                 ),
                 const SizedBox(height: 18),
                 ElevatedButton(
-                  onPressed: _checking ? null : () => unawaited(_checkConnectivity()),
+                  onPressed: _checking
+                      ? null
+                      : () => unawaited(_checkConnectivity()),
                   child: Text(_checking ? 'Checking...' : 'Retry'),
                 ),
               ],
@@ -565,7 +567,7 @@ class _AuthGateState extends State<_AuthGate> {
     } catch (_) {
       return 'staff';
     }
-  } 
+  }
 
   void _queueTagMigrationIfNeeded(String role) {
     if (role.toLowerCase() != 'admin' || _tagMigrationQueued) {
@@ -900,7 +902,9 @@ class _MyHomePageState extends State<MyHomePage> {
         case _AppTab.sales:
           return const SalesPage();
         case _AppTab.total:
-          return const TotalPage();
+          return TotalPage(
+            canFinishTransaction: widget.role.toLowerCase() == 'admin',
+          );
       }
     }).toList();
   }
@@ -1027,10 +1031,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
                 },
-                icon: const Icon(
-                  Icons.logout,
-                  color: Colors.transparent,
-                ),
+                icon: const Icon(Icons.logout, color: Colors.transparent),
               ),
             ),
           ],
