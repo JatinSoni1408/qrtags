@@ -5,6 +5,7 @@ class SharedItemFormLayout extends StatelessWidget {
     super.key,
     required this.primarySection,
     required this.makingSection,
+    this.returnPuritySection,
     required this.lessSection,
     required this.weightSection,
     required this.additionalSection,
@@ -13,6 +14,7 @@ class SharedItemFormLayout extends StatelessWidget {
 
   final Widget primarySection;
   final Widget makingSection;
+  final Widget? returnPuritySection;
   final Widget lessSection;
   final Widget weightSection;
   final Widget additionalSection;
@@ -27,6 +29,10 @@ class SharedItemFormLayout extends StatelessWidget {
         primarySection,
         const SizedBox(height: 16),
         makingSection,
+        if (returnPuritySection != null) ...[
+          const SizedBox(height: 16),
+          returnPuritySection!,
+        ],
         const SizedBox(height: 16),
         lessSection,
         const SizedBox(height: 12),

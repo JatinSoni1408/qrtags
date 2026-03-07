@@ -58,6 +58,7 @@ class _GeneratePageState extends State<GeneratePage> {
   static const String _makingTypesSilverCollection = 'making_types_silver';
   String? _selectedCategory;
   String? _selectedMakingType;
+  String? _selectedReturnPurity;
   String? _selectedItemName;
   String? _lastCategory;
   String? _lastItemName;
@@ -92,6 +93,7 @@ class _GeneratePageState extends State<GeneratePage> {
   final List<String> _makingTypesGold = [];
   final List<String> _makingTypesSilver = [];
   final List<String> _percentageOptions = List.generate(11, (i) => '${i + 8}%');
+  final List<String> _returnPurityOptions = ['50%', '60%', '70%', '80%', '92%'];
   final List<String> _defaultLessCategories = ['Stones', 'Meena', 'Kundan'];
   final List<String> _lessCategories = [];
   final List<String> _defaultAdditionalTypes = [
@@ -1115,6 +1117,9 @@ class _GeneratePageState extends State<GeneratePage> {
     if (_grossWeightController.text.trim().isEmpty) {
       missingFields.add('Gross Weight');
     }
+    if (_selectedCategory == 'Silver' && (_selectedReturnPurity ?? '').isEmpty) {
+      missingFields.add('Return Purity');
+    }
     if (missingFields.isNotEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1151,6 +1156,7 @@ class _GeneratePageState extends State<GeneratePage> {
       'lessWeight': _lessWeightController.text,
       'netWeight': _netWeightController.text,
       'huid': _isHuidChecked,
+      'returnPurity': _selectedReturnPurity,
       'lessCategories': lessEntries,
       'additionalTypes': additionalEntries,
     };
@@ -1216,6 +1222,7 @@ class _GeneratePageState extends State<GeneratePage> {
       _selectedItemName = tag.itemName;
       _itemNameController.text = _selectedItemName ?? '';
       _selectedMakingType = tag.makingType;
+      _selectedReturnPurity = tag.returnPurity;
       if (!_makingTypesForCategory(
         _selectedCategory,
       ).contains(_selectedMakingType)) {
@@ -2667,6 +2674,13 @@ class _GeneratePageState extends State<GeneratePage> {
                         ).contains(_selectedMakingType)) {
                           _selectedMakingType = null;
                         }
+                        if (_selectedCategory == 'Gold22kt') {
+                          _selectedReturnPurity = '22kt';
+                        } else if (_selectedCategory == 'Gold18kt') {
+                          _selectedReturnPurity = '18kt';
+                        } else {
+                          _selectedReturnPurity = null;
+                        }
                       });
                       _saveIfNeeded();
                     },
@@ -2852,6 +2866,42 @@ class _GeneratePageState extends State<GeneratePage> {
                 ),
               ],
             ),
+            returnPuritySection: _selectedCategory == 'Silver'
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _selectedReturnPurity,
+                          hint: const Text('Return Purity'),
+                          items: _returnPurityOptions.map((String purity) {
+                            return DropdownMenuItem<String>(
+                              value: purity,
+                              child: Text(purity),
+                            );
+                          }).toList(),
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              _selectedReturnPurity = newValue;
+                            });
+                            _saveIfNeeded();
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Return Purity',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (_selectedCategory == 'Silver' && (value == null || value.isEmpty)) {
+                              return 'Required for Silver items';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                : null,
             additionalSection: Column(
               children: _additionalEntries.asMap().entries.map((entry) {
                 return Padding(

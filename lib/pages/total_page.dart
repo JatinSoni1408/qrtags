@@ -77,12 +77,16 @@ class _TotalPageState extends State<TotalPage> {
     ),
   ];
 
+  final TextEditingController _customerNameController = TextEditingController();
+  final TextEditingController _customerMobileController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
+  final FocusNode _discountFocusNode = FocusNode();
   final List<_PaymentEntryDraft> _paymentEntries = <_PaymentEntryDraft>[];
   final FlutterTts _flutterTts = FlutterTts();
   Uint8List? _cachedShreeHeaderBytes;
   String? _activeInvoiceNo;
   bool _finishingTransaction = false;
+  bool _printingBill = false;
   _TakeawayMode? _activeTakeawayMode;
   late Future<_TotalsData> _totalsFuture;
 
@@ -101,7 +105,7 @@ class _TotalPageState extends State<TotalPage> {
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
-  String _formatIndianInput(String value) {
+  String _formatIndianCurrency(String value) {
     final cleaned = value.replaceAll(',', '').trim();
     if (cleaned.isEmpty) {
       return '';
@@ -301,7 +305,10 @@ class _TotalPageState extends State<TotalPage> {
     for (final entry in _paymentEntries) {
       entry.dispose();
     }
+    _customerNameController.dispose();
+    _customerMobileController.dispose();
     _discountController.dispose();
+    _discountFocusNode.dispose();
     super.dispose();
   }
 
@@ -956,21 +963,61 @@ class _TotalPageState extends State<TotalPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                  const SizedBox(height: 8),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Payment Entries',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
-                                ),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Customer Details',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _customerNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Customer Name (Optional)',
+                                border: OutlineInputBorder(),
                               ),
+                              onChanged: (value) {
+                                setState(() {});
+                                unawaited(_saveDraft());
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _customerMobileController,
+                              keyboardType: TextInputType.phone,
+                              decoration: const InputDecoration(
+                                labelText: 'Mobile Number (Optional)',
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (value) {
+                                setState(() {});
+                                unawaited(_saveDraft());
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Payment Entries',
+                                    style: TextStyle(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
                               OutlinedButton.icon(
                                 onPressed: _clearPaymentEntries,
                                 icon: const Icon(Icons.clear_all),
@@ -1055,39 +1102,44 @@ class _TotalPageState extends State<TotalPage> {
                                             unawaited(_saveDraft());
                                           },
                                         );
-                                    final amountField = TextField(
-                                      controller: paymentEntry.amountController,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      decoration:
-                                          const InputDecoration(
-                                            labelText: 'Amount',
-                                          ).copyWith(
-                                            helperText:
-                                                paymentEntry.mode == 'UPI'
-                                                ? 'Max 100000.00'
-                                                : null,
-                                          ),
-                                      onChanged: (value) {
-                                        final formatted = _formatIndianInput(
-                                          value,
-                                        );
-                                        if (formatted != value) {
-                                          paymentEntry
-                                              .amountController
-                                              .value = TextEditingValue(
-                                            text: formatted,
-                                            selection: TextSelection.collapsed(
-                                              offset: formatted.length,
-                                            ),
-                                          );
+                                    final amountField = Focus(
+                                      onFocusChange: (hasFocus) {
+                                        if (!hasFocus && paymentEntry.amountController.text.isNotEmpty) {
+                                          final plainText = paymentEntry.amountController.text;
+                                          final formatted = _formatIndianCurrency(plainText);
+                                          if (formatted != plainText) {
+                                            paymentEntry.amountController.text = formatted;
+                                          }
+                                        } else if (hasFocus && paymentEntry.amountController.text.isNotEmpty) {
+                                          final formattedText = paymentEntry.amountController.text;
+                                          final plain = formattedText.replaceAll(',', '');
+                                          if (plain != formattedText) {
+                                            paymentEntry.amountController.text = plain;
+                                          }
                                         }
-                                        _enforceUpiLimit(paymentEntry);
-                                        setState(() {});
-                                        unawaited(_saveDraft());
                                       },
+                                      child: TextField(
+                                        controller: paymentEntry.amountController,
+                                        focusNode: paymentEntry.amountFocusNode,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration:
+                                            const InputDecoration(
+                                              labelText: 'Amount',
+                                            ).copyWith(
+                                              helperText:
+                                                  paymentEntry.mode == 'UPI'
+                                                  ? 'Max 100000.00'
+                                                  : null,
+                                            ),
+                                        onChanged: (value) {
+                                          _enforceUpiLimit(paymentEntry);
+                                          setState(() {});
+                                          unawaited(_saveDraft());
+                                        },
+                                      ),
                                     );
 
                                     return Column(
@@ -1148,28 +1200,37 @@ class _TotalPageState extends State<TotalPage> {
                           ),
                           const SizedBox(height: 4),
                           if (data.discountEnabled) ...[
-                            TextField(
-                              controller: _discountController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: const InputDecoration(
-                                labelText: 'Discount',
-                              ),
-                              onChanged: (value) {
-                                final formatted = _formatIndianInput(value);
-                                if (formatted != value) {
-                                  _discountController.value = TextEditingValue(
-                                    text: formatted,
-                                    selection: TextSelection.collapsed(
-                                      offset: formatted.length,
-                                    ),
-                                  );
+                            Focus(
+                              onFocusChange: (hasFocus) {
+                                if (!hasFocus && _discountController.text.isNotEmpty) {
+                                  final plainText = _discountController.text;
+                                  final formatted = _formatIndianCurrency(plainText);
+                                  if (formatted != plainText) {
+                                    _discountController.text = formatted;
+                                  }
+                                } else if (hasFocus && _discountController.text.isNotEmpty) {
+                                  final formattedText = _discountController.text;
+                                  final plain = formattedText.replaceAll(',', '');
+                                  if (plain != formattedText) {
+                                    _discountController.text = plain;
+                                  }
                                 }
-                                setState(() {});
-                                unawaited(_saveDraft());
                               },
+                              child: TextField(
+                                controller: _discountController,
+                                focusNode: _discountFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Discount',
+                                ),
+                                onChanged: (value) {
+                                  setState(() {});
+                                  unawaited(_saveDraft());
+                                },
+                              ),
                             ),
                             const SizedBox(height: 8),
                           ],

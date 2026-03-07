@@ -431,7 +431,8 @@ class _ScanPageState extends State<ScanPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Item removed'),
-        duration: const Duration(seconds: 5),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.fixed,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -449,6 +450,12 @@ class _ScanPageState extends State<ScanPage> {
         ),
       ),
     );
+    // Auto-dismiss after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+    });
   }
 
   Future<void> _showManualCalculator() async {

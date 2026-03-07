@@ -171,6 +171,7 @@ extension _TotalPageStorageExtension on _TotalPageState {
           additionalBreakup: additionalBreakup,
           gstDisplay: gstEnabled ? '3%' : '-',
           isManualEntry: isManualEntry,
+          returnPurity: parsed['returnPurity']?.toString() ?? '',
         ),
       );
     }

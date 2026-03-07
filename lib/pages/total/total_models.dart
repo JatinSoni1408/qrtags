@@ -65,14 +65,17 @@ class _PaymentEntryDraft {
     required this.date,
     required this.mode,
     String amount = '',
-  }) : amountController = TextEditingController(text: amount);
+  }) : amountController = TextEditingController(text: amount),
+       amountFocusNode = FocusNode();
 
   DateTime date;
   String mode;
   final TextEditingController amountController;
+  final FocusNode amountFocusNode;
 
   void dispose() {
     amountController.dispose();
+    amountFocusNode.dispose();
   }
 }
 
@@ -126,6 +129,7 @@ class _SelectedItemView {
     required this.additionalBreakup,
     required this.gstDisplay,
     required this.isManualEntry,
+    required this.returnPurity,
   });
 
   final String title;
@@ -146,6 +150,7 @@ class _SelectedItemView {
   final Map<String, double> additionalBreakup;
   final String gstDisplay;
   final bool isManualEntry;
+  final String returnPurity;
 
   String get formulaDisplay {
     final text = formula.trim();

@@ -14,6 +14,7 @@ import 'data/tag_migration_runner.dart';
 import 'pages/generate_page.dart';
 import 'pages/inventory_page.dart';
 import 'pages/login_page.dart';
+import 'pages/bhav_page.dart';
 import 'pages/old_page.dart';
 import 'pages/sales_page.dart';
 import 'pages/scan_page.dart';
@@ -222,6 +223,13 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) {
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const _BootstrapGate(),
     );
   }
@@ -240,7 +248,9 @@ class _BootstrapGateState extends State<_BootstrapGate> {
   @override
   void initState() {
     super.initState();
-    _bootstrapFuture = Firebase.initializeApp();
+    _bootstrapFuture = Firebase.initializeApp().timeout(
+      const Duration(seconds: 20),
+    );
   }
 
   @override
@@ -281,8 +291,110 @@ class _BootstrapGateState extends State<_BootstrapGate> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        return const _AuthGate();
+        return const _ConnectivityGate(child: _AuthGate());
       },
+    );
+  }
+}
+
+class _ConnectivityGate extends StatefulWidget {
+  const _ConnectivityGate({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ConnectivityGate> createState() => _ConnectivityGateState();
+}
+
+class _ConnectivityGateState extends State<_ConnectivityGate> {
+  bool _online = false;
+  bool _checking = true;
+  bool _inFlight = false;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_checkConnectivity());
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(_checkConnectivity());
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkConnectivity() async {
+    if (_inFlight) {
+      return;
+    }
+    _inFlight = true;
+    if (mounted) {
+      setState(() {
+        _checking = true;
+      });
+    }
+    bool connected = false;
+    try {
+      await FirebaseFirestore.instance
+          .collection('app_config')
+          .doc('version')
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 6));
+      connected = true;
+    } catch (_) {
+      connected = false;
+    } finally {
+      _inFlight = false;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _online = connected;
+      _checking = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_online) {
+      return widget.child;
+    }
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.wifi_off, size: 54),
+                const SizedBox(height: 14),
+                const Text(
+                  'Enable Wi-Fi / Internet',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Please enable Wi-Fi or connect to the internet before logging in.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton(
+                  onPressed: _checking ? null : () => unawaited(_checkConnectivity()),
+                  child: Text(_checking ? 'Checking...' : 'Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -373,7 +485,8 @@ class _AuthGateState extends State<_AuthGate> {
       final doc = await FirebaseFirestore.instance
           .collection(_configCollection)
           .doc(_versionDocId)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 12));
       if (!doc.exists || doc.data() == null) {
         return _VersionGateResult(
           blocked: false,
@@ -423,7 +536,7 @@ class _AuthGateState extends State<_AuthGate> {
     final users = FirebaseFirestore.instance.collection('users');
     final docRef = users.doc(user.uid);
     try {
-      final doc = await docRef.get();
+      final doc = await docRef.get().timeout(const Duration(seconds: 10));
       String role = 'staff';
       if (doc.exists) {
         role = doc.data()?['role']?.toString().toLowerCase() ?? 'staff';
@@ -588,7 +701,7 @@ class _UpdateRequiredPage extends StatelessWidget {
   }
 }
 
-enum _AppTab { inventory, tags, scan, old, sales, total }
+enum _AppTab { bhav, inventory, tags, scan, old, sales, total }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({
@@ -638,7 +751,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   List<_AppTab> get _tabOrder => widget.isStaff
-      ? const [_AppTab.scan, _AppTab.old, _AppTab.total]
+      ? const [_AppTab.bhav, _AppTab.scan, _AppTab.old, _AppTab.total]
       : const [
           _AppTab.inventory,
           _AppTab.tags,
@@ -673,6 +786,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     if (currentTab == _AppTab.scan && _hasTab(_AppTab.tags)) {
       _setTab(_AppTab.tags);
+      return;
+    }
+    if (currentTab == _AppTab.scan && _hasTab(_AppTab.bhav)) {
+      _setTab(_AppTab.bhav);
       return;
     }
     if (currentTab == _AppTab.tags && _hasTab(_AppTab.inventory)) {
@@ -747,6 +864,8 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Widget> _buildPages() {
     return _tabOrder.map((tab) {
       switch (tab) {
+        case _AppTab.bhav:
+          return const BhavPage();
         case _AppTab.inventory:
           return InventoryPage(
             onEditTag: (request) {
@@ -789,6 +908,11 @@ class _MyHomePageState extends State<MyHomePage> {
   List<BottomNavigationBarItem> _buildItems() {
     return _tabOrder.map((tab) {
       switch (tab) {
+        case _AppTab.bhav:
+          return const BottomNavigationBarItem(
+            icon: Icon(Icons.currency_rupee),
+            label: 'Bhav',
+          );
         case _AppTab.inventory:
           return const BottomNavigationBarItem(
             icon: Icon(Icons.inventory_2),

@@ -142,7 +142,7 @@ extension _TotalPageTtsExtension on _TotalPageState {
       await _setPreferredLanguage(
         hindi ? const ['hi-IN', 'hi'] : const ['en-IN', 'en-US', 'en'],
       );
-      await _flutterTts.setSpeechRate(0.55);
+      await _flutterTts.setSpeechRate(0.45);
       await _flutterTts.setPitch(1.0);
       await _flutterTts.speak(text);
     } catch (error, stackTrace) {
