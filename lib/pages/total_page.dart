@@ -686,7 +686,7 @@ class _TotalPageState extends State<TotalPage> {
                                             'Time left: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}',
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w700,
-                                              color: Color(0xFF0A8F5E),
+                                              color: Colors.red,
                                             ),
                                           );
                                         },
