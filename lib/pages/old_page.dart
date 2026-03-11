@@ -882,7 +882,7 @@ class _OldPageState extends State<OldPage> {
           child: Row(
             children: [
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
