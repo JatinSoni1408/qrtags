@@ -586,10 +586,10 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<Uint8List> _buildQrPdfBytes(List<TagRecord> tags) async {
-    const columns = 11;
+    const columns = 13;
     // 1.4 cm = 39.6851 PDF points
     const qrPt = 39.6851;
-    const gapPt = 1.2;
+    const gapPt = 0.8;
     final qrImages = <pw.MemoryImage?>[];
 
     for (final tag in tags) {

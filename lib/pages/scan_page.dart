@@ -461,7 +461,7 @@ class _ScanPageState extends State<ScanPage> {
   Future<void> _showManualCalculator() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => const _ManualItemDialog(),
+      builder: (context) => _ManualItemDialog(firestore: _firestore),
     );
     if (result == null) {
       return;
@@ -483,7 +483,8 @@ class _ScanPageState extends State<ScanPage> {
     }
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => _ManualItemDialog(initialData: existing),
+      builder: (context) =>
+          _ManualItemDialog(initialData: existing, firestore: _firestore),
     );
     if (result == null) {
       return;
@@ -984,15 +985,18 @@ class _LiveQrScannerPage extends StatefulWidget {
 }
 
 class _ManualItemDialog extends StatefulWidget {
-  const _ManualItemDialog({this.initialData});
+  const _ManualItemDialog({this.initialData, required this.firestore});
 
   final Map<String, dynamic>? initialData;
+  final FirebaseFirestore firestore;
 
   @override
   State<_ManualItemDialog> createState() => _ManualItemDialogState();
 }
 
 class _ManualItemDialogState extends State<_ManualItemDialog> {
+  static const String _lessCategoriesCollection = 'less_categories';
+  static const String _additionalTypesCollection = 'additional_types';
   static const List<String> _defaultCategories = [
     'Gold22kt',
     'Gold18kt',
@@ -1041,6 +1045,11 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
   final List<_ManualAdditionalEntryDraft> _additionalEntries = [
     _ManualAdditionalEntryDraft(),
   ];
+  late final FirebaseFirestore _firestore;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _lessCategoriesSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _additionalTypesSub;
+  bool _seedingLessCategories = false;
+  bool _seedingAdditionalTypes = false;
 
   List<String> _categories = List<String>.from(_defaultCategories);
   List<String> _makingTypesGold = List<String>.from(_defaultMakingTypesGold);
@@ -1057,9 +1066,28 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
   bool _submitted = false;
   bool _usingFallbackMasterData = false;
 
+  String _normalizeLessCategory(String value) => value.trim();
+
+  String _lessCategoryDocId(String value) => value.trim().toLowerCase();
+
+  CollectionReference<Map<String, dynamic>> get _lessCategoriesRef =>
+      _firestore.collection(_lessCategoriesCollection);
+
+  String _normalizeAdditionalType(String value) => value.trim();
+
+  String _additionalTypeDocId(String value) => value.trim().toLowerCase();
+
+  CollectionReference<Map<String, dynamic>> get _additionalTypesRef =>
+      _firestore.collection(_additionalTypesCollection);
+
+  void _sortList(List<String> values) {
+    values.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
   @override
   void initState() {
     super.initState();
+    _firestore = widget.firestore;
     _grossWeightController.addListener(_recalculateWeights);
     for (final entry in _lessEntries) {
       entry.valueController.addListener(_recalculateWeights);
@@ -1069,6 +1097,8 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
 
   @override
   void dispose() {
+    _lessCategoriesSub?.cancel();
+    _additionalTypesSub?.cancel();
     _itemNameController.dispose();
     _makingChargeController.dispose();
     _grossWeightController.dispose();
@@ -1124,6 +1154,8 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _applyInitialDataIfAny();
         _loading = false;
       });
+      _startLessCategoriesSync();
+      _startAdditionalTypesSync();
     } catch (_) {
       if (!mounted) {
         return;
@@ -1135,7 +1167,159 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _applyInitialDataIfAny();
         _loading = false;
       });
+      _startLessCategoriesSync();
+      _startAdditionalTypesSync();
     }
+  }
+
+  void _startLessCategoriesSync() {
+    _lessCategoriesSub?.cancel();
+    _lessCategoriesSub = _lessCategoriesRef
+        .orderBy('nameLower')
+        .snapshots()
+        .listen((snapshot) async {
+          final names = snapshot.docs
+              .map((doc) => doc.data()['name']?.toString().trim())
+              .whereType<String>()
+              .where((name) => name.isNotEmpty)
+              .toList();
+
+          if (names.isEmpty) {
+            await _seedLessCategoriesIfEmpty();
+            return;
+          }
+
+          _sortList(names);
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _lessCategories = names;
+          });
+          await _saveLessCategoriesToPrefs();
+        });
+    _seedLessCategoriesIfEmpty();
+  }
+
+  Future<void> _seedLessCategoriesIfEmpty() async {
+    if (_seedingLessCategories) {
+      return;
+    }
+    _seedingLessCategories = true;
+    try {
+      final existing = await _lessCategoriesRef.limit(1).get();
+      if (existing.docs.isNotEmpty) {
+        return;
+      }
+      final seedSource = _lessCategories.isNotEmpty
+          ? _lessCategories
+          : _defaultLessCategories;
+      final unique = <String>{};
+      final batch = _firestore.batch();
+      for (final name in seedSource) {
+        final normalized = _normalizeLessCategory(name);
+        if (normalized.isEmpty) {
+          continue;
+        }
+        final docId = _lessCategoryDocId(normalized);
+        if (!unique.add(docId)) {
+          continue;
+        }
+        batch.set(_lessCategoriesRef.doc(docId), {
+          'name': normalized,
+          'nameLower': docId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (unique.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // ignore seeding failures
+    } finally {
+      _seedingLessCategories = false;
+    }
+  }
+
+  Future<void> _saveLessCategoriesToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('less_categories', _lessCategories);
+  }
+
+  void _startAdditionalTypesSync() {
+    _additionalTypesSub?.cancel();
+    _additionalTypesSub = _additionalTypesRef
+        .orderBy('nameLower')
+        .snapshots()
+        .listen((snapshot) async {
+          final names = snapshot.docs
+              .map((doc) => doc.data()['name']?.toString().trim())
+              .whereType<String>()
+              .where((name) => name.isNotEmpty)
+              .toList();
+
+          if (names.isEmpty) {
+            await _seedAdditionalTypesIfEmpty();
+            return;
+          }
+
+          _sortList(names);
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _additionalTypes = names;
+          });
+          await _saveAdditionalTypesToPrefs();
+        });
+    _seedAdditionalTypesIfEmpty();
+  }
+
+  Future<void> _seedAdditionalTypesIfEmpty() async {
+    if (_seedingAdditionalTypes) {
+      return;
+    }
+    _seedingAdditionalTypes = true;
+    try {
+      final existing = await _additionalTypesRef.limit(1).get();
+      if (existing.docs.isNotEmpty) {
+        return;
+      }
+      final seedSource = _additionalTypes.isNotEmpty
+          ? _additionalTypes
+          : _defaultAdditionalTypes;
+      final unique = <String>{};
+      final batch = _firestore.batch();
+      for (final name in seedSource) {
+        final normalized = _normalizeAdditionalType(name);
+        if (normalized.isEmpty) {
+          continue;
+        }
+        final docId = _additionalTypeDocId(normalized);
+        if (!unique.add(docId)) {
+          continue;
+        }
+        batch.set(_additionalTypesRef.doc(docId), {
+          'name': normalized,
+          'nameLower': docId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (unique.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // ignore seeding failures
+    } finally {
+      _seedingAdditionalTypes = false;
+    }
+  }
+
+  Future<void> _saveAdditionalTypesToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('additional_types', _additionalTypes);
   }
 
   void _applyInitialDataIfAny() {
