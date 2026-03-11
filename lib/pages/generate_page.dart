@@ -1149,11 +1149,11 @@ class _GeneratePageState extends State<GeneratePage> {
     _markRecentItemName(_selectedItemName);
     await _saveIfNeeded();
 
+    final locationText = _locationController.text.trim();
     final data = <String, dynamic>{
       'category': _selectedCategory,
       'itemName': _selectedItemName,
       'itemNameLower': (_selectedItemName ?? '').trim().toLowerCase(),
-      'location': _locationController.text.trim(),
       'makingType': _selectedMakingType,
       'makingCharge': _makingChargeController.text,
       'grossWeight': _grossWeightController.text,
@@ -1164,6 +1164,11 @@ class _GeneratePageState extends State<GeneratePage> {
       'lessCategories': lessEntries,
       'additionalTypes': additionalEntries,
     };
+    if (locationText.isNotEmpty) {
+      data['location'] = locationText;
+    } else {
+      data['location'] = FieldValue.delete();
+    }
     final currentUser = FirebaseAuth.instance.currentUser;
     final actorUid = currentUser?.uid ?? '';
     final actorEmail = currentUser?.email ?? '';
