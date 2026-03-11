@@ -56,6 +56,7 @@ class GenerateTagNormalizer {
       'category': normalizedText(data['category']),
       'itemName': normalizedText(data['itemName']),
       'itemNameLower': normalizedText(data['itemNameLower']),
+      'location': normalizedText(data['location']),
       'makingType': normalizedText(data['makingType']),
       'makingCharge': normalizedText(data['makingCharge']),
       'grossWeight': normalizedText(data['grossWeight']),

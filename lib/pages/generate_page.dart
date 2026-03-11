@@ -47,6 +47,7 @@ class _GeneratePageState extends State<GeneratePage> {
   static const String _recentItemNameKey = 'recent_item_name';
   static const String _huidCheckedKey = 'huid_checked';
   static const String _itemNamesKey = 'item_names';
+  static const String _locationsKey = 'locations';
   static const String _categoriesKey = 'categories';
   static const String _makingTypesGoldKey = 'making_types_gold';
   static const String _makingTypesSilverKey = 'making_types_silver';
@@ -60,6 +61,7 @@ class _GeneratePageState extends State<GeneratePage> {
   String? _selectedMakingType;
   String? _selectedReturnPurity;
   String? _selectedItemName;
+  String? _selectedLocation;
   String? _lastCategory;
   String? _lastItemName;
   String? _lastMakingType;
@@ -80,6 +82,21 @@ class _GeneratePageState extends State<GeneratePage> {
     'Pendals',
   ];
   final List<String> _itemNames = [];
+  final List<String> _defaultLocations = [
+    'C1',
+    'C2',
+    'C3',
+    'D1',
+    'D2',
+    'D3',
+    'D4',
+    'D5',
+    'D6',
+    'D7',
+    'D8',
+    'D9',
+  ];
+  final List<String> _locations = [];
   final List<String> _defaultMakingTypesGold = [
     'FixRate',
     'Percentage',
@@ -133,6 +150,8 @@ class _GeneratePageState extends State<GeneratePage> {
   CollectionReference<Map<String, dynamic>> get _itemNamesRef =>
       _firestore.collection(_itemNamesCollection);
 
+  String _normalizeLocation(String value) => value.trim();
+
   String _normalizeLessCategory(String value) => value.trim();
 
   String _lessCategoryDocId(String value) => value.trim().toLowerCase();
@@ -176,7 +195,6 @@ class _GeneratePageState extends State<GeneratePage> {
 
   final TextEditingController _makingChargeController = TextEditingController();
   final TextEditingController _itemNameController = TextEditingController();
-  final TextEditingController _locationController = TextEditingController();
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _lessWeightController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController();
@@ -223,7 +241,6 @@ class _GeneratePageState extends State<GeneratePage> {
     _makingTypesSilverSub?.cancel();
     _makingChargeController.dispose();
     _itemNameController.dispose();
-    _locationController.dispose();
     _grossWeightController.dispose();
     _lessWeightController.dispose();
     _netWeightController.dispose();
@@ -928,6 +945,10 @@ class _GeneratePageState extends State<GeneratePage> {
           prefs.getStringList(_additionalTypesKey) ?? _defaultAdditionalTypes,
         );
       _sortList(_additionalTypes);
+      _locations
+        ..clear()
+        ..addAll(prefs.getStringList(_locationsKey) ?? _defaultLocations);
+      _sortList(_locations);
       _restoreEntriesFromPrefs(prefs);
       _lastCategory = _trimOrNull(prefs.getString(_lastCategoryKey));
       _lastItemName = _trimOrNull(prefs.getString(_lastItemNameKey));
@@ -1073,8 +1094,8 @@ class _GeneratePageState extends State<GeneratePage> {
       _selectedCategory = null;
       _selectedMakingType = null;
       _selectedItemName = null;
+      _selectedLocation = null;
       _itemNameController.text = '';
-      _locationController.text = '';
       _makingChargeController.text = '';
       _grossWeightController.text = '';
       _lessWeightController.text = '';
@@ -1149,7 +1170,7 @@ class _GeneratePageState extends State<GeneratePage> {
     _markRecentItemName(_selectedItemName);
     await _saveIfNeeded();
 
-    final locationText = _locationController.text.trim();
+    final locationText = (_selectedLocation ?? '').trim();
     final data = <String, dynamic>{
       'category': _selectedCategory,
       'itemName': _selectedItemName,
@@ -1166,7 +1187,7 @@ class _GeneratePageState extends State<GeneratePage> {
     };
     if (locationText.isNotEmpty) {
       data['location'] = locationText;
-    } else {
+    } else if (_editingTagId != null) {
       data['location'] = FieldValue.delete();
     }
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -1230,7 +1251,13 @@ class _GeneratePageState extends State<GeneratePage> {
       _selectedCategory = tag.category;
       _selectedItemName = tag.itemName;
       _itemNameController.text = _selectedItemName ?? '';
-      _locationController.text = data['location']?.toString() ?? '';
+      _selectedLocation = data['location']?.toString();
+      if (_selectedLocation != null &&
+          _selectedLocation!.isNotEmpty &&
+          !_locations.contains(_selectedLocation)) {
+        _locations.add(_selectedLocation!);
+        _sortList(_locations);
+      }
       _selectedMakingType = tag.makingType;
       _selectedReturnPurity = tag.returnPurity;
       if (!_makingTypesForCategory(
@@ -1369,6 +1396,7 @@ class _GeneratePageState extends State<GeneratePage> {
     await prefs.setStringList(_makingTypesSilverKey, _makingTypesSilver);
     await prefs.setStringList(_lessCategoriesKey, _lessCategories);
     await prefs.setStringList(_additionalTypesKey, _additionalTypes);
+    await prefs.setStringList(_locationsKey, _locations);
     await prefs.setString(
       _lessCategoryEntriesKey,
       jsonEncode(
@@ -2184,6 +2212,124 @@ class _GeneratePageState extends State<GeneratePage> {
     );
   }
 
+  Future<void> _openLocationManager() async {
+    await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final addController = TextEditingController();
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> save() async => _saveIfNeeded();
+
+            Future<void> addOrUpdate({String? existing}) async {
+              final value = _normalizeLocation(addController.text);
+              if (value.isEmpty) return;
+              setState(() {
+                if (existing != null) {
+                  final idx = _locations.indexOf(existing);
+                  if (idx != -1) {
+                    _locations[idx] = value;
+                  }
+                } else if (!_locations.contains(value)) {
+                  _locations.add(value);
+                }
+                _sortList(_locations);
+                _selectedLocation = value;
+              });
+              setModalState(() {});
+              await save();
+              addController.clear();
+            }
+
+            Future<void> rename(String current) async {
+              addController.text = current;
+              await addOrUpdate(existing: current);
+            }
+
+            Future<void> remove(String value) async {
+              setState(() {
+                _locations.remove(value);
+                if (_selectedLocation == value) {
+                  _selectedLocation = null;
+                }
+              });
+              setModalState(() {});
+              await save();
+            }
+
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: addController,
+                          decoration: const InputDecoration(
+                            labelText: 'New / Edit Location',
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (_) => addOrUpdate(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: addOrUpdate,
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _locations.length,
+                      itemBuilder: (context, index) {
+                        final loc = _locations[index];
+                        final selected = loc == _selectedLocation;
+                        return ListTile(
+                          title: Text(loc),
+                          leading:
+                              selected ? const Icon(Icons.check, color: Colors.green) : null,
+                          onTap: () {
+                            setState(() => _selectedLocation = loc);
+                            save();
+                            Navigator.of(context).pop(loc);
+                          },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Edit',
+                                icon: const Icon(Icons.edit),
+                                onPressed: () async {
+                                  addController.text = loc;
+                                  await rename(loc);
+                                },
+                              ),
+                              IconButton(
+                                tooltip: 'Delete',
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => remove(loc),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildLessCategoryRow(int index) {
     final entry = _lessCategoryEntries[index];
     final canDelete = _lessCategoryEntries.length > 1;
@@ -2716,22 +2862,49 @@ class _GeneratePageState extends State<GeneratePage> {
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildItemNameField(context)),
-                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _locationController,
-                  decoration: InputDecoration(
-                    labelText: 'Location (optional)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                const SizedBox(width: 16),
+                Expanded(child: _buildItemNameField(context)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _locations.contains(_selectedLocation)
+                        ? _selectedLocation
+                        : null,
+                    hint: const Text('Location (optional)'),
+                    items: _locations
+                        .map(
+                          (loc) => DropdownMenuItem<String>(
+                            value: loc,
+                            child: Text(loc),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedLocation = value;
+                      });
+                      _saveIfNeeded();
+                    },
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                  onChanged: (_) => _saveIfNeeded(),
                 ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Manage locations',
+                  onPressed: _openLocationManager,
+                  icon: const Icon(Icons.edit_location_alt),
+                ),
+              ],
+            ),
               ],
             ),
             makingSection: Row(
