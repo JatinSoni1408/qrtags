@@ -225,7 +225,7 @@ class _OldPageState extends State<OldPage> {
     });
   }
 
-  void _addOrUpdateItem() {
+  void _addOrUpdateItem({BuildContext? dialogContext}) {
     final itemName = _itemNameController.text.trim();
     final grossText = _grossWeightController.text.trim();
     final lessText = _lessWeightController.text.trim();
@@ -310,6 +310,7 @@ class _OldPageState extends State<OldPage> {
 
     _saveItems();
     _resetForm();
+    dialogContext != null ? Navigator.of(dialogContext).pop() : null;
   }
 
   void _startEditItem(int index) {
@@ -325,6 +326,7 @@ class _OldPageState extends State<OldPage> {
       _amountController.text = _formatIndianAmount(_computedAmount);
     });
     _updateNetWeight();
+    _showEntryDialog(isEditing: true);
   }
 
   void _deleteItem(int index) {
@@ -383,6 +385,283 @@ class _OldPageState extends State<OldPage> {
         ..clear()
         ..addAll(loaded);
     });
+  }
+
+  Future<void> _showEntryDialog({bool isEditing = false}) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final tanchEnabled = _usesTanch(_selectedReturnBhav);
+            return AlertDialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              contentPadding:
+                  const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Old Item Entry',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isEditing
+                        ? 'Update existing item'
+                        : 'Add old purchase details',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 540),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: TextField(
+                              controller: _itemNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Item Name',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 3,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _selectedReturnBhav,
+                              isExpanded: true,
+                              items: _returnBhavOptions.map((b) {
+                                final disabled = b == 'Gold18kt';
+                                return DropdownMenuItem<String>(
+                                  value: b,
+                                  enabled: !disabled,
+                                  child: Text(
+                                    '$b ${_formatIndianForReturnBhav(b)}${disabled ? ' (Disabled)' : ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: disabled
+                                        ? TextStyle(
+                                            color:
+                                                Theme.of(context).disabledColor,
+                                          )
+                                        : null,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedReturnBhav = value;
+                                  if (!_usesTanch(value)) {
+                                    _selectedTanch = null;
+                                  }
+                                });
+                                _updateAmount();
+                                setDialogState(() {});
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Return Bhav',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 14,
+                                ),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _sectionHeader(
+                        context,
+                        'Weights',
+                        subtitle: 'Net weight is auto-calculated',
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _grossWeightController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Gross Weight',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _lessWeightController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              onTap: () {
+                                _lessWeightController.selection = TextSelection(
+                                  baseOffset: 0,
+                                  extentOffset:
+                                      _lessWeightController.text.length,
+                                );
+                              },
+                              onChanged: (_) {
+                                _updateNetWeight();
+                                setDialogState(() {});
+                              },
+                              onEditingComplete: () {
+                                final value = double.tryParse(
+                                          _lessWeightController.text.trim(),
+                                        ) ??
+                                        0.0;
+                                _lessWeightController.text =
+                                    value.toStringAsFixed(3);
+                                _lessWeightController.selection =
+                                    TextSelection.collapsed(
+                                  offset: _lessWeightController.text.length,
+                                );
+                                _updateNetWeight();
+                                setDialogState(() {});
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Less Weight',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _autoNetWeightController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Net Weight',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _selectedTanch,
+                              isExpanded: true,
+                              items: _tanchOptions
+                                  .map(
+                                    (p) => DropdownMenuItem<String>(
+                                      value: p,
+                                      child: Text(p),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: tanchEnabled
+                                  ? (value) {
+                                      setState(() {
+                                        _selectedTanch = value;
+                                      });
+                                      _updateAmount();
+                                      setDialogState(() {});
+                                    }
+                                  : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Tanch',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 14,
+                                ),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _amountController,
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Amount',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 14,
+                                ),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        tanchEnabled
+                            ? 'Tanch is required for selected Return Bhav.'
+                            : 'Tanch is auto-disabled for Gold22kt/Gold18kt.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _addOrUpdateItem(
+                            dialogContext: dialogContext,
+                          ),
+                          icon: Icon(
+                            _editingIndex == null
+                                ? Icons.add_circle_outline
+                                : Icons.save_outlined,
+                          ),
+                          label: Text(
+                            _editingIndex == null
+                                ? 'Add Item'
+                                : 'Update Item',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   double _returnBhavValue(String option) {
@@ -591,7 +870,6 @@ class _OldPageState extends State<OldPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final tanchEnabled = _usesTanch(_selectedReturnBhav);
     final totalGross = _items.fold<double>(
       0.0,
       (sum, item) => sum + item.grossWeight,
@@ -611,266 +889,45 @@ class _OldPageState extends State<OldPage> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: () {
+                    _resetForm();
+                    _showEntryDialog(isEditing: false);
+                  },
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Add Old Item Details'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _items.isEmpty ? null : _clearAllItems,
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('Clear All'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _sectionHeader(
-                                context,
-                                'Old Item Entry',
-                                subtitle: _editingIndex == null
-                                    ? 'Add old purchase details'
-                                    : 'Editing item ${_editingIndex! + 1}',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            OutlinedButton.icon(
-                              onPressed: _items.isEmpty ? null : _clearAllItems,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear All'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 4,
-                              child: TextField(
-                                controller: _itemNameController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Item Name',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 3,
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _selectedReturnBhav,
-                                isExpanded: true,
-                                items: _returnBhavOptions.map((b) {
-                                  final disabled = b == 'Gold18kt';
-                                  return DropdownMenuItem<String>(
-                                          value: b,
-                                          enabled: !disabled,
-                                          child: Text(
-                                            '$b ${_formatIndianForReturnBhav(b)}${disabled ? ' (Disabled)' : ''}',
-                                            overflow: TextOverflow.ellipsis,
-                                            style: disabled
-                                                ? TextStyle(
-                                              color: Theme.of(
-                                                context,
-                                              ).disabledColor,
-                                            )
-                                          : null,
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _selectedReturnBhav = value;
-                                    if (!_usesTanch(value)) {
-                                      _selectedTanch = null;
-                                    }
-                                  });
-                                  _updateAmount();
-                                },
-                                decoration: const InputDecoration(
-                                  labelText: 'Return Bhav',
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 14,
-                                  ),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _sectionHeader(
-                          context,
-                          'Weights',
-                          subtitle: 'Net weight is auto-calculated',
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _grossWeightController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Gross Weight',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _lessWeightController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onTap: () {
-                                  _lessWeightController.selection =
-                                      TextSelection(
-                                        baseOffset: 0,
-                                        extentOffset:
-                                            _lessWeightController.text.length,
-                                      );
-                                },
-                                onChanged: (_) => _updateNetWeight(),
-                                onEditingComplete: () {
-                                  final value =
-                                      double.tryParse(
-                                        _lessWeightController.text.trim(),
-                                      ) ??
-                                      0.0;
-                                  _lessWeightController.text = value
-                                      .toStringAsFixed(3);
-                                  _lessWeightController
-                                      .selection = TextSelection.collapsed(
-                                    offset: _lessWeightController.text.length,
-                                  );
-                                  _updateNetWeight();
-                                },
-                                decoration: const InputDecoration(
-                                  labelText: 'Less Weight',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _autoNetWeightController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                readOnly: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Net Weight',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _selectedTanch,
-                                isExpanded: true,
-                                items: _tanchOptions
-                                    .map(
-                                      (p) => DropdownMenuItem<String>(
-                                        value: p,
-                                        child: Text(p),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: tanchEnabled
-                                    ? (value) {
-                                        setState(() {
-                                          _selectedTanch = value;
-                                        });
-                                        _updateAmount();
-                                      }
-                                    : null,
-                                decoration: const InputDecoration(
-                                  labelText: 'Tanch',
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 14,
-                                  ),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _amountController,
-                                readOnly: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Amount',
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 14,
-                                  ),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          tanchEnabled
-                              ? 'Tanch is required for selected Return Bhav.'
-                              : 'Tanch is auto-disabled for Gold22kt/Gold18kt.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _addOrUpdateItem,
-                                icon: Icon(
-                                  _editingIndex == null
-                                      ? Icons.add_circle_outline
-                                      : Icons.save_outlined,
-                                ),
-                                label: Text(
-                                  _editingIndex == null
-                                      ? 'Add Item'
-                                      : 'Update Item',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            OutlinedButton.icon(
-                              onPressed: _resetForm,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reset'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 if (_items.isNotEmpty)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1007,6 +1064,19 @@ class _OldPageState extends State<OldPage> {
                       ),
                       const SizedBox(height: 80),
                     ],
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(top: 40),
+                    child: Center(
+                      child: Text(
+                        'No old items yet.\nTap "Add Old Item Details" to begin.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   ),
               ],
             ),

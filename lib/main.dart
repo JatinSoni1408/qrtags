@@ -1058,54 +1058,15 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-class _VibratingTitleSettingsButton extends StatefulWidget {
+class _VibratingTitleSettingsButton extends StatelessWidget {
   const _VibratingTitleSettingsButton();
 
   @override
-  State<_VibratingTitleSettingsButton> createState() =>
-      _VibratingTitleSettingsButtonState();
-}
-
-class _VibratingTitleSettingsButtonState
-    extends State<_VibratingTitleSettingsButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _offset;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 120),
-    )..repeat(reverse: true);
-    _offset = Tween<double>(
-      begin: -1.5,
-      end: 1.5,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _offset,
-      child: const SettingsButton(
-        tooltip: 'Settings',
-        color: Colors.red,
-        padding: EdgeInsets.zero,
-      ),
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(_offset.value, 0),
-          child: child,
-        );
-      },
+    return const SettingsButton(
+      tooltip: 'Settings',
+      color: Colors.red,
+      padding: EdgeInsets.zero,
     );
   }
 }

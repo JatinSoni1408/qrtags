@@ -212,20 +212,85 @@ extension _TotalPagePdfExtension on _TotalPageState {
       (sum, value) => sum + value,
     );
 
+    pw.Widget buildAdditionalTable() {
+      if (additionalTypeTotals.isEmpty) {
+        return pw.SizedBox.shrink();
+      }
+
+      pw.Widget cell(
+        String text, {
+        bool right = false,
+        bool bold = false,
+      }) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+          child: pw.Align(
+            alignment:
+                right ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
+            child: pw.Text(
+              text,
+              maxLines: 1,
+              softWrap: false,
+              overflow: pw.TextOverflow.clip,
+              style: pw.TextStyle(
+                fontSize: 9.3,
+                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }
+
+      return pw.Table(
+        border: pw.TableBorder.all(width: 0.6, color: PdfColors.black),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(2.2),
+          1: const pw.FlexColumnWidth(1.4),
+          2: const pw.FlexColumnWidth(1.4),
+        },
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+            children: [
+              cell(tr('Additional Name', 'अतिरिक्त नाम'), bold: true),
+              cell(tr('Amount', 'राशि'), right: true, bold: true),
+              cell(tr('Total', 'कुल'), right: true, bold: true),
+            ],
+          ),
+          ...additionalTypeKeys.map(
+            (type) => pw.TableRow(
+              children: [
+                cell(type),
+                cell(
+                  PriceCalculator.formatIndianAmount(
+                    additionalTypeTotals[type] ?? 0.0,
+                  ),
+                  right: true,
+                ),
+                cell(''),
+              ],
+            ),
+          ),
+          pw.TableRow(
+            children: [
+              cell(tr('Total', 'कुल'), bold: true),
+              cell('', right: true),
+              cell(
+                PriceCalculator.formatIndianAmount(totalAdditionalCharges),
+                right: true,
+                bold: true,
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     final amountSummaryRows = <pw.Widget>[
       keyValue(tr('Selected Items', 'चयनित आइटम'), '${data.selectedCount}'),
       keyValue(tr('Old Items', 'पुराने आइटम'), '${data.oldItems.length}'),
-      if (additionalTypeTotals.isNotEmpty)
-        keyValue(
-          tr('Additional Total', 'अतिरिक्त कुल'),
-          PriceCalculator.formatIndianAmount(totalAdditionalCharges),
-        ),
-      ...additionalTypeKeys.map((type) {
-        return keyValue(
-          '  - $type',
-          PriceCalculator.formatIndianAmount(additionalTypeTotals[type] ?? 0.0),
-        );
-      }),
+      if (additionalTypeTotals.isNotEmpty) pw.SizedBox(height: 6),
+      if (additionalTypeTotals.isNotEmpty) buildAdditionalTable(),
     ];
 
     final categoryWeightTotals = <String, List<double>>{};
@@ -422,7 +487,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
     const pdfRightMargin = 24.0;
     const pdfTopMargin = 24.0;
     const pdfBottomMargin = 24.0;
-    final pagesToGenerate = billStatus == 'PENDING' ? 2 : 1;
+    const pagesToGenerate = 1;
     for (var i = 0; i < pagesToGenerate; i++) {
     doc.addPage(
       pw.Page(
