@@ -2872,7 +2872,7 @@ class _GeneratePageState extends State<GeneratePage> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _locations.contains(_selectedLocation)
+                    initialValue: _locations.contains(_selectedLocation)
                         ? _selectedLocation
                         : null,
                     hint: const Text('Location (optional)'),
