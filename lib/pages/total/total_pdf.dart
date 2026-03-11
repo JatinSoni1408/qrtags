@@ -422,6 +422,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
     const pdfRightMargin = 24.0;
     const pdfTopMargin = 24.0;
     const pdfBottomMargin = 24.0;
+    final pagesToGenerate = billStatus == 'PENDING' ? 2 : 1;
+    for (var i = 0; i < pagesToGenerate; i++) {
     doc.addPage(
       pw.Page(
         pageFormat: effectivePageFormat,
@@ -988,6 +990,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
         },
       ),
     );
+    }
 
     return doc.save();
   }

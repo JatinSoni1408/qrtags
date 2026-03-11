@@ -2630,6 +2630,17 @@ class _GeneratePageState extends State<GeneratePage> {
 
   @override
   Widget build(BuildContext context) {
+    final categoryValue = _categories.contains(_selectedCategory)
+        ? _selectedCategory
+        : null;
+    final makingTypes = _makingTypesForCategory(_selectedCategory);
+    final makingTypeValue = makingTypes.contains(_selectedMakingType)
+        ? _selectedMakingType
+        : null;
+    final returnPurityValue = _returnPurityOptions.contains(_selectedReturnPurity)
+        ? _selectedReturnPurity
+        : null;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -2658,7 +2669,8 @@ class _GeneratePageState extends State<GeneratePage> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _selectedCategory,
+                    key: ValueKey(categoryValue),
+                    initialValue: categoryValue,
                     hint: const Text('Category'),
                     items: _categories.map((String category) {
                       return DropdownMenuItem<String>(
@@ -2701,9 +2713,10 @@ class _GeneratePageState extends State<GeneratePage> {
                 Expanded(
                   flex: 5,
                   child: DropdownButtonFormField<String>(
-                    initialValue: _selectedMakingType,
+                    key: ValueKey('${categoryValue ?? ''}-${makingTypeValue ?? ''}'),
+                    initialValue: makingTypeValue,
                     isExpanded: true,
-                    items: _makingTypesForCategory(_selectedCategory)
+                    items: makingTypes
                         .map(
                           (t) => DropdownMenuItem<String>(
                             value: t,
@@ -2715,8 +2728,7 @@ class _GeneratePageState extends State<GeneratePage> {
                           ),
                         )
                         .toList(),
-                    onChanged:
-                        _makingTypesForCategory(_selectedCategory).isEmpty
+                    onChanged: makingTypes.isEmpty
                         ? null
                         : (value) {
                             setState(() {
@@ -2871,7 +2883,8 @@ class _GeneratePageState extends State<GeneratePage> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: _selectedReturnPurity,
+                          key: ValueKey('return-$returnPurityValue'),
+                          initialValue: returnPurityValue,
                           hint: const Text('Return Purity'),
                           items: _returnPurityOptions.map((String purity) {
                             return DropdownMenuItem<String>(
