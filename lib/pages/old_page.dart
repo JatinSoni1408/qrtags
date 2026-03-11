@@ -628,25 +628,7 @@ class _OldPageState extends State<OldPage> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _addOrUpdateItem(
-                            dialogContext: dialogContext,
-                          ),
-                          icon: Icon(
-                            _editingIndex == null
-                                ? Icons.add_circle_outline
-                                : Icons.save_outlined,
-                          ),
-                          label: Text(
-                            _editingIndex == null
-                                ? 'Add Item'
-                                : 'Update Item',
-                          ),
-                        ),
-                      ),
+                      const SizedBox(height: 6),
                     ],
                   ),
                 ),
@@ -655,6 +637,12 @@ class _OldPageState extends State<OldPage> {
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Close'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _addOrUpdateItem(
+                    dialogContext: dialogContext,
+                  ),
+                  child: const Text('Save'),
                 ),
               ],
             );
