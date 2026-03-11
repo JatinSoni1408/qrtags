@@ -559,6 +559,7 @@ class _TotalPageState extends State<TotalPage> {
       builder: (context) {
         final splits = _splitAmounts(amount);
         final badgeStyles = _buildRandomQrCenterStyles(splits.length);
+        final countdownEnd = DateTime.now().add(const Duration(minutes: 5));
         return Dialog(
           insetPadding: const EdgeInsets.symmetric(
             horizontal: 14,
@@ -646,7 +647,6 @@ class _TotalPageState extends State<TotalPage> {
                           child: SingleChildScrollView(
                             child: Column(
                               children: splits.asMap().entries.map((entry) {
-                                final index = entry.key + 1;
                                 final badgeStyle = badgeStyles[entry.key];
                                 final splitAmount = entry.value;
                                 final showIdNote = splitAmount > 50000;
@@ -670,14 +670,28 @@ class _TotalPageState extends State<TotalPage> {
                                   ),
                                   child: Column(
                                     children: [
-                                      Text(
-                                        'QR $index',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF5A3027),
+                                      StreamBuilder<int>(
+                                        stream: Stream.periodic(
+                                          const Duration(seconds: 1),
+                                          (_) => countdownEnd
+                                              .difference(DateTime.now())
+                                              .inSeconds,
                                         ),
+                                        builder: (context, snapshot) {
+                                          final remaining =
+                                              (snapshot.data ?? 300).clamp(0, 300);
+                                          final mins = remaining ~/ 60;
+                                          final secs = remaining % 60;
+                                          return Text(
+                                            'Time left: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF0A8F5E),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 4),
                                       Text(
                                         PriceCalculator.formatIndianAmount(
                                           splitAmount,
@@ -690,8 +704,13 @@ class _TotalPageState extends State<TotalPage> {
                                       ),
                                       if (showIdNote) ...[
                                         const SizedBox(height: 6),
-                                        const _VibrateText(
-                                          'Ask customer for ID',
+                                        const Text(
+                                          'Please share a valid government ID.\nYour info will be kept secure. Thank you!',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ],
                                       const SizedBox(height: 10),
