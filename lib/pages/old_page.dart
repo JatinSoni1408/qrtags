@@ -882,6 +882,7 @@ class _OldPageState extends State<OldPage> {
           child: Row(
             children: [
               Expanded(
+                flex: 2,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
@@ -897,6 +898,7 @@ class _OldPageState extends State<OldPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
+                flex: 2,
                 child: OutlinedButton.icon(
                   onPressed: _items.isEmpty ? null : _clearAllItems,
                   icon: const Icon(Icons.clear_all),
