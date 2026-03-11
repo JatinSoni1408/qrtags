@@ -13,7 +13,8 @@ class BhavPage extends StatefulWidget {
   State<BhavPage> createState() => _BhavPageState();
 }
 
-class _BhavPageState extends State<BhavPage> {
+class _BhavPageState extends State<BhavPage>
+    with SingleTickerProviderStateMixin {
   late final VoidCallback _ratesListener;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
@@ -22,6 +23,9 @@ class _BhavPageState extends State<BhavPage> {
   double _rateGold22 = 0.0;
   double _rateGold18 = 0.0;
   double _rateSilver = 0.0;
+  DateTime? _rateUpdatedAt;
+  AnimationController? _returnRateController;
+  Animation<double>? _returnRateOffset;
 
   @override
   void initState() {
@@ -42,8 +46,23 @@ class _BhavPageState extends State<BhavPage> {
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _returnRateController?.dispose();
     SettingsButton.ratesVersion.removeListener(_ratesListener);
     super.dispose();
+  }
+
+  void _ensureReturnRateAnimation() {
+    if (_returnRateController != null) {
+      return;
+    }
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    )..repeat(reverse: true);
+    _returnRateController = controller;
+    _returnRateOffset = Tween<double>(begin: -2.0, end: 2.0).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeInOut),
+    );
   }
 
   Future<void> _loadRates() async {
@@ -51,11 +70,15 @@ class _BhavPageState extends State<BhavPage> {
     if (!mounted) {
       return;
     }
+    final updatedAtMillis = prefs.getInt(StorageKeys.rateUpdatedAt);
     setState(() {
       _rateGold24 = prefs.getDouble(StorageKeys.rateGold24) ?? 0.0;
       _rateGold22 = prefs.getDouble(StorageKeys.rateGold22) ?? 0.0;
       _rateGold18 = prefs.getDouble(StorageKeys.rateGold18) ?? 0.0;
       _rateSilver = prefs.getDouble(StorageKeys.rateSilver) ?? 0.0;
+      _rateUpdatedAt = updatedAtMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(updatedAtMillis);
     });
   }
 
@@ -102,7 +125,7 @@ class _BhavPageState extends State<BhavPage> {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: scheme.onSurfaceVariant,
               ),
@@ -112,12 +135,57 @@ class _BhavPageState extends State<BhavPage> {
           Text(
             '$value / Gram',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
               color: scheme.onSurface,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _returnRateRow({
+    required String label,
+    required String value,
+  }) {
+    _ensureReturnRateAnimation();
+    return AnimatedBuilder(
+      animation: _returnRateOffset ?? const AlwaysStoppedAnimation<double>(0),
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(
+            (_returnRateOffset?.value ?? 0),
+            0,
+          ),
+          child: child,
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.red,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$value / Gram',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -143,10 +211,18 @@ class _BhavPageState extends State<BhavPage> {
     return '$date  $time';
   }
 
+  String _formatUpdatedAt(DateTime? value) {
+    if (value == null) {
+      return 'Auto Updated: Not available';
+    }
+    return 'Auto Updated: ${_formatClock(value)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final return22 = _rateGold22 - 300;
     final return18 = _rateGold18 - 300;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return ColoredBox(
       color: Colors.white,
@@ -165,13 +241,29 @@ class _BhavPageState extends State<BhavPage> {
                   children: [
                     _sarafaHeader(),
                     Center(
-                      child: Text(
-                        _formatClock(_now),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatClock(_now),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatUpdatedAt(_rateUpdatedAt),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -199,14 +291,12 @@ class _BhavPageState extends State<BhavPage> {
                       value: _formatIndian(_rateSilver),
                     ),
                     const SizedBox(height: 6),
-                    _rateRow(
-                      context: context,
+                    _returnRateRow(
                       label: 'Return Rate 22kt',
                       value: _formatIndian(return22, decimals: 0),
                     ),
                     const SizedBox(height: 6),
-                    _rateRow(
-                      context: context,
+                    _returnRateRow(
                       label: 'Return Rate 18kt',
                       value: _formatIndian(return18, decimals: 0),
                     ),

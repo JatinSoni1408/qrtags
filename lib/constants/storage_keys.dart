@@ -25,4 +25,5 @@ class StorageKeys {
   static const String rateGold22 = 'rate_gold22';
   static const String rateGold18 = 'rate_gold18';
   static const String rateSilver = 'rate_silver';
+  static const String rateUpdatedAt = 'rate_updated_at';
 }

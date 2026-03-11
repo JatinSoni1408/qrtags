@@ -20,6 +20,7 @@ class SettingsButton extends StatelessWidget {
   static const String _rateGold22Key = 'rate_gold22';
   static const String _rateGold18Key = 'rate_gold18';
   static const String _rateSilverKey = 'rate_silver';
+  static const String _rateUpdatedAtKey = 'rate_updated_at';
   static const String _configCollection = 'app_config';
   static const String _ratesDocId = 'rates';
   static const String _updatedByUidKey = 'updatedByUid';
@@ -137,6 +138,10 @@ class SettingsButton extends StatelessWidget {
         _updatedByEmailKey: userEmail,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await prefs.setInt(
+        _rateUpdatedAtKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     }
 
     _ratesSyncSub = ratesRef.snapshots().listen((snapshot) async {
@@ -152,6 +157,7 @@ class SettingsButton extends StatelessWidget {
       final current22 = localPrefs.getDouble(_rateGold22Key) ?? 0.0;
       final current18 = localPrefs.getDouble(_rateGold18Key) ?? 0.0;
       final currentSilver = localPrefs.getDouble(_rateSilverKey) ?? 0.0;
+      final currentUpdatedAt = localPrefs.getInt(_rateUpdatedAtKey);
 
       final next24 = _toDouble(data[_rateGold24Key], fallback: current24);
       final next22 = _toDouble(data[_rateGold22Key], fallback: current22);
@@ -160,6 +166,15 @@ class SettingsButton extends StatelessWidget {
         data[_rateSilverKey],
         fallback: currentSilver,
       );
+      final updatedAtValue = data['updatedAt'];
+      DateTime? nextUpdatedAt;
+      if (updatedAtValue is Timestamp) {
+        nextUpdatedAt = updatedAtValue.toDate();
+      } else if (updatedAtValue is int) {
+        nextUpdatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtValue);
+      } else if (updatedAtValue is String) {
+        nextUpdatedAt = DateTime.tryParse(updatedAtValue);
+      }
 
       bool changed = false;
       if ((current24 - next24).abs() > 0.000001) {
@@ -177,6 +192,13 @@ class SettingsButton extends StatelessWidget {
       if ((currentSilver - nextSilver).abs() > 0.000001) {
         await localPrefs.setDouble(_rateSilverKey, nextSilver);
         changed = true;
+      }
+      if (nextUpdatedAt != null) {
+        final millis = nextUpdatedAt.millisecondsSinceEpoch;
+        if (currentUpdatedAt == null || currentUpdatedAt != millis) {
+          await localPrefs.setInt(_rateUpdatedAtKey, millis);
+          changed = true;
+        }
       }
       if (changed) {
         ratesVersion.value++;
@@ -327,6 +349,11 @@ class SettingsButton extends StatelessWidget {
                     await prefs.setDouble(_rateGold22Key, rate22);
                     await prefs.setDouble(_rateGold18Key, rate18);
                     await prefs.setDouble(_rateSilverKey, rateSilver);
+                    final now = DateTime.now();
+                    await prefs.setInt(
+                      _rateUpdatedAtKey,
+                      now.millisecondsSinceEpoch,
+                    );
                     final user = FirebaseAuth.instance.currentUser;
                     await FirebaseFirestore.instance
                         .collection(_configCollection)

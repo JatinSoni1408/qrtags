@@ -68,6 +68,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
         '${_twoDigits(now.day)}/${_twoDigits(now.month)}/${now.year}';
     final billTime =
         '${_twoDigits(now.hour)}:${_twoDigits(now.minute)}:${_twoDigits(now.second)}';
+    final hasGstApplied = data.selectedItems
+        .any((item) => item.gstAmount.abs() > 0.000001);
+    final billStatus = hasGstApplied ? 'PENDING' : '-';
     final invoiceNo = await _getOrCreateInvoiceNumber(now: now);
     final sectionStyle = pw.TextStyle(
       fontSize: 11,
@@ -494,6 +497,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                 keyValue(
                                   tr('Bill Date & Time', 'बिल दिनांक व समय'),
                                   '$billDate $billTime',
+                                ),
+                                keyValue(
+                                  tr('Bill Status', 'बिल स्थिति'),
+                                  billStatus,
                                 ),
                               ],
                             ),
