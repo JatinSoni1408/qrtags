@@ -336,15 +336,9 @@ class _TotalPageState extends State<TotalPage> {
 
   String _buildSplitShareText(List<double> splits, [String note = '']) {
     final buffer = StringBuffer();
-    buffer.writeln('Split Payment QR List');
-    buffer.writeln('Total parts: ${splits.length}');
-    if (note.isNotEmpty) {
-      buffer.writeln('Items: $note');
-    }
     for (int i = 0; i < splits.length; i++) {
       final amt = splits[i];
       buffer.writeln('QR ${i + 1}: ${PriceCalculator.formatIndianAmount(amt)}');
-      buffer.writeln(_buildUpiQr(amt, note));
     }
     return buffer.toString().trim();
   }
