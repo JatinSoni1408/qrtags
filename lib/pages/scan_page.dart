@@ -2322,6 +2322,7 @@ class _ScanResultCardState extends State<_ScanResultCard> {
 
   Widget _buildDetailSection() {
     final category = widget.data['category']?.toString() ?? '-';
+    final location = widget.data['location']?.toString().trim();
     final gross = widget.data['grossWeight']?.toString() ?? '-';
     final less = widget.data['lessWeight']?.toString() ?? '-';
     final net = widget.data['netWeight']?.toString() ?? '-';
@@ -2336,6 +2337,10 @@ class _ScanResultCardState extends State<_ScanResultCard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('Category: $category'),
+        if (location != null && location.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('Location: $location'),
+        ],
         const SizedBox(height: 6),
         if (lessCategories.isNotEmpty) ...[
           const Text('Less Categories'),

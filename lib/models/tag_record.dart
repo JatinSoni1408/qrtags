@@ -6,6 +6,7 @@ class TagRecord {
     required this.category,
     required this.itemName,
     required this.itemNameLower,
+    required this.location,
     required this.makingType,
     required this.makingCharge,
     required this.grossWeight,
@@ -25,6 +26,7 @@ class TagRecord {
   final String category;
   final String itemName;
   final String itemNameLower;
+  final String location;
   final String makingType;
   final String makingCharge;
   final String grossWeight;
@@ -59,6 +61,7 @@ class TagRecord {
       category: normalized['category']?.toString() ?? '',
       itemName: normalized['itemName']?.toString() ?? '',
       itemNameLower: normalized['itemNameLower']?.toString().toLowerCase() ?? '',
+      location: normalized['location']?.toString() ?? '',
       makingType: normalized['makingType']?.toString() ?? '',
       makingCharge: normalized['makingCharge']?.toString() ?? '',
       grossWeight: normalized['grossWeight']?.toString() ?? '',

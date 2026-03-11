@@ -176,6 +176,7 @@ class _GeneratePageState extends State<GeneratePage> {
 
   final TextEditingController _makingChargeController = TextEditingController();
   final TextEditingController _itemNameController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _lessWeightController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController();
@@ -222,6 +223,7 @@ class _GeneratePageState extends State<GeneratePage> {
     _makingTypesSilverSub?.cancel();
     _makingChargeController.dispose();
     _itemNameController.dispose();
+    _locationController.dispose();
     _grossWeightController.dispose();
     _lessWeightController.dispose();
     _netWeightController.dispose();
@@ -1072,6 +1074,7 @@ class _GeneratePageState extends State<GeneratePage> {
       _selectedMakingType = null;
       _selectedItemName = null;
       _itemNameController.text = '';
+      _locationController.text = '';
       _makingChargeController.text = '';
       _grossWeightController.text = '';
       _lessWeightController.text = '';
@@ -1150,6 +1153,7 @@ class _GeneratePageState extends State<GeneratePage> {
       'category': _selectedCategory,
       'itemName': _selectedItemName,
       'itemNameLower': (_selectedItemName ?? '').trim().toLowerCase(),
+      'location': _locationController.text.trim(),
       'makingType': _selectedMakingType,
       'makingCharge': _makingChargeController.text,
       'grossWeight': _grossWeightController.text,
@@ -1221,6 +1225,7 @@ class _GeneratePageState extends State<GeneratePage> {
       _selectedCategory = tag.category;
       _selectedItemName = tag.itemName;
       _itemNameController.text = _selectedItemName ?? '';
+      _locationController.text = data['location']?.toString() ?? '';
       _selectedMakingType = tag.makingType;
       _selectedReturnPurity = tag.returnPurity;
       if (!_makingTypesForCategory(
@@ -2665,47 +2670,63 @@ class _GeneratePageState extends State<GeneratePage> {
           ),
           const SizedBox(height: 8),
           SharedItemFormLayout(
-            primarySection: Row(
+            primarySection: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    key: ValueKey(categoryValue),
-                    initialValue: categoryValue,
-                    hint: const Text('Category'),
-                    items: _categories.map((String category) {
-                      return DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(category),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        _selectedCategory = newValue;
-                        if (!_makingTypesForCategory(
-                          _selectedCategory,
-                        ).contains(_selectedMakingType)) {
-                          _selectedMakingType = null;
-                        }
-                        if (_selectedCategory == 'Gold22kt') {
-                          _selectedReturnPurity = '22kt';
-                        } else if (_selectedCategory == 'Gold18kt') {
-                          _selectedReturnPurity = '18kt';
-                        } else {
-                          _selectedReturnPurity = null;
-                        }
-                      });
-                      _saveIfNeeded();
-                    },
-                    decoration: InputDecoration(
-                      labelText: 'Category',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey(categoryValue),
+                        initialValue: categoryValue,
+                        hint: const Text('Category'),
+                        items: _categories.map((String category) {
+                          return DropdownMenuItem<String>(
+                            value: category,
+                            child: Text(category),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedCategory = newValue;
+                            if (!_makingTypesForCategory(
+                              _selectedCategory,
+                            ).contains(_selectedMakingType)) {
+                              _selectedMakingType = null;
+                            }
+                            if (_selectedCategory == 'Gold22kt') {
+                              _selectedReturnPurity = '22kt';
+                            } else if (_selectedCategory == 'Gold18kt') {
+                              _selectedReturnPurity = '18kt';
+                            } else {
+                              _selectedReturnPurity = null;
+                            }
+                          });
+                          _saveIfNeeded();
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'Category',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildItemNameField(context)),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(child: _buildItemNameField(context)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _locationController,
+                  decoration: InputDecoration(
+                    labelText: 'Location (optional)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onChanged: (_) => _saveIfNeeded(),
+                ),
               ],
             ),
             makingSection: Row(
