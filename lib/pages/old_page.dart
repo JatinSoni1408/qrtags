@@ -1014,13 +1014,13 @@ class _OldPageState extends State<OldPage> {
                                           text: _oldItemFormulaPrefix(
                                             entry.value,
                                           ),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                         TextSpan(
                                           text: _oldItemFormulaRate(
                                             entry.value,
-                                          ),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ],
