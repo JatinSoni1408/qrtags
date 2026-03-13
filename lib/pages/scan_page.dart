@@ -82,11 +82,6 @@ class _ScanPageState extends State<ScanPage> {
     setState(() {
       _globalGstEnabled = enabled;
       _makingEnabled = makingEnabled;
-      if (!_globalGstEnabled) {
-        for (int i = 0; i < _gstEnabledByItem.length; i++) {
-          _gstEnabledByItem[i] = true;
-        }
-      }
     });
     _scheduleRecalculateTotals();
   }
@@ -300,9 +295,7 @@ class _ScanPageState extends State<ScanPage> {
       final huidMandatory = _hasHuid(parsed);
       final gstEnabled = huidMandatory
           ? true
-          : (_globalGstEnabled
-                ? (i < _gstEnabledByItem.length ? _gstEnabledByItem[i] : true)
-                : true);
+          : (i < _gstEnabledByItem.length ? _gstEnabledByItem[i] : true);
       final breakdown = await PriceCalculator.calculateBreakdown(
         parsed,
         gstEnabledOverride: gstEnabled,

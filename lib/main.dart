@@ -725,7 +725,6 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
-  bool _openedRatesDialogOnLaunch = false;
   final ValueNotifier<EditTagRequest?> _editTagRequest =
       ValueNotifier<EditTagRequest?>(null);
 
@@ -955,20 +954,6 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _selectedIndex = _indexOfTab(_AppTab.scan);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _openRatesOnLaunchIfNeeded();
-    });
-  }
-
-  Future<void> _openRatesOnLaunchIfNeeded() async {
-    if (!mounted || widget.isStaff || _openedRatesDialogOnLaunch) {
-      return;
-    }
-    if (_selectedIndex != _indexOfTab(_AppTab.scan)) {
-      return;
-    }
-    _openedRatesDialogOnLaunch = true;
-    await SettingsButton.openRateSettings(context);
   }
 
   @override
@@ -977,9 +962,6 @@ class _MyHomePageState extends State<MyHomePage> {
     if (_selectedIndex >= _tabOrder.length) {
       _selectedIndex = _indexOfTab(_AppTab.scan);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _openRatesOnLaunchIfNeeded();
-    });
   }
 
   @override

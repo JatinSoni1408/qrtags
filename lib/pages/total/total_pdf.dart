@@ -51,10 +51,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
   ) async {
     final doc = pw.Document();
     final effectivePageFormat = pageFormat ?? _TotalPageState._billPageFormat;
-    final normalizedCustomerName = customerName.trim();
-    final normalizedCustomerMobile = customerMobile.trim();
     String tr(String english, String hindi) => english;
     final now = DateTime.now();
+    final normalizedCustomerName = customerName.trim();
+    final normalizedCustomerMobile = customerMobile.trim();
     final netPayable = data.selectedTotal - data.oldTotal - discount;
     final totalReceived = cashReceived + upiReceived;
     final diff = _normalizeMoneyDelta(netPayable - totalReceived);
@@ -64,14 +64,12 @@ extension _TotalPagePdfExtension on _TotalPageState {
     final dueValue = diff.abs();
     final dueText =
         '${diff < 0 ? '-' : ''}${PriceCalculator.formatIndianAmount(dueValue)}';
-    final billDate =
-        '${_twoDigits(now.day)}/${_twoDigits(now.month)}/${now.year}';
-    final billTime =
-        '${_twoDigits(now.hour)}:${_twoDigits(now.minute)}:${_twoDigits(now.second)}';
+    final billDateShort =
+        '${_twoDigits(now.day)}/${_twoDigits(now.month)}/${_twoDigits(now.year % 100)}';
     final hasGstApplied = data.selectedItems
         .any((item) => item.gstAmount.abs() > 0.000001);
     final billStatus = hasGstApplied ? 'PENDING' : '-';
-    final invoiceNo = await _getOrCreateInvoiceNumber(now: now);
+    await _getOrCreateInvoiceNumber(now: now);
     final sectionStyle = pw.TextStyle(
       fontSize: 11,
       fontWeight: pw.FontWeight.bold,
@@ -287,9 +285,6 @@ extension _TotalPagePdfExtension on _TotalPageState {
     }
 
     final amountSummaryRows = <pw.Widget>[
-      keyValue(tr('Selected Items', 'चयनित आइटम'), '${data.selectedCount}'),
-      keyValue(tr('Old Items', 'पुराने आइटम'), '${data.oldItems.length}'),
-      if (additionalTypeTotals.isNotEmpty) pw.SizedBox(height: 6),
       if (additionalTypeTotals.isNotEmpty) buildAdditionalTable(),
     ];
 
@@ -535,78 +530,35 @@ extension _TotalPagePdfExtension on _TotalPageState {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Expanded(
-                            flex: 1,
-                            child: pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.start,
-                              children: [
-                                pw.RichText(
-                                  text: pw.TextSpan(
-                                    children: [
-                                      pw.TextSpan(
-                                        text: 'ESTIMATED ',
-                                        style: sectionStyle.copyWith(
-                                          fontWeight: pw.FontWeight.bold,
-                                          fontSize: 12.2,
-                                        ),
-                                      ),
-                                      pw.TextSpan(
-                                        text: 'Details',
-                                        style: sectionStyle,
-                                      ),
-                                    ],
+                            child: pw.RichText(
+                              text: pw.TextSpan(
+                                children: [
+                                  pw.TextSpan(
+                                    text: 'ESTIMATED',
+                                    style: sectionStyle.copyWith(
+                                      fontWeight: pw.FontWeight.bold,
+                                      fontSize: 12.2,
+                                    ),
                                   ),
-                                ),
-                                pw.SizedBox(height: 6),
-                                keyValue(
-                                  tr('Invoice No', 'इनवॉइस नं.'),
-                                  invoiceNo,
-                                ),
-                                keyValue(
-                                  tr('Bill Date & Time', 'बिल दिनांक व समय'),
-                                  '$billDate $billTime',
-                                ),
-                                keyValue(
-                                  tr('Bill Status', 'बिल स्थिति'),
-                                  billStatus,
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                          pw.SizedBox(width: 16),
-                          pw.Expanded(
-                            flex: 1,
-                            child: pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.start,
-                              children: [
-                                pw.Text(
-                                  tr('Customer Details', 'ग्राहक विवरण'),
-                                  style: sectionStyle,
-                                ),
-                                pw.SizedBox(height: 6),
-                                keyValue(
-                                  tr('Customer Name', 'ग्राहक नाम'),
-                                  normalizedCustomerName.isEmpty
-                                      ? '________________'
-                                      : normalizedCustomerName,
-                                ),
-                                keyValueWidget(
-                                  tr('Customer Mobile', 'मोबाइल नंबर'),
-                                  normalizedCustomerMobile.isEmpty
-                                      ? pw.Text(
-                                          '________________',
-                                          textAlign: pw.TextAlign.right,
-                                          style: valueStyle,
-                                        )
-                                      : pw.Text(
-                                          normalizedCustomerMobile,
-                                          textAlign: pw.TextAlign.right,
-                                          style: valueStyle,
-                                        ),
-                                ),
-                              ],
-                            ),
+                          pw.Text(
+                            'Date: $billDateShort',
+                            style: valueStyle,
+                            textAlign: pw.TextAlign.right,
                           ),
                         ],
+                      ),
+                      pw.SizedBox(height: 6),
+                      pw.Center(
+                        child: pw.Text(
+                          '${normalizedCustomerName.isEmpty ? 'Customer: ______________________' : 'Customer: $normalizedCustomerName'}     '
+                          '${normalizedCustomerMobile.isEmpty ? 'Mobile: ______________________' : 'Mobile: $normalizedCustomerMobile'}',
+                          style: valueStyle,
+                          textAlign: pw.TextAlign.center,
+                        ),
                       ),
                     ]),
                     pw.SizedBox(height: 8),
@@ -614,24 +566,23 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       pw.Row(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Expanded(
-                            flex: 1,
-                            child: pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.start,
-                              children: [
-                                pw.Text(
-                                  tr(
-                                    'Quick Item Summary',
-                                    'त्वरित आइटम सारांश',
+                          if (amountSummaryRows.isNotEmpty) ...[
+                            pw.Expanded(
+                              flex: 1,
+                              child: pw.Column(
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Text(
+                                    tr('Additionals Summary', 'अतिरिक्त सारांश'),
+                                    style: sectionStyle,
                                   ),
-                                  style: sectionStyle,
-                                ),
-                                pw.SizedBox(height: 6),
-                                ...amountSummaryRows,
-                              ],
+                                  pw.SizedBox(height: 6),
+                                  ...amountSummaryRows,
+                                ],
+                              ),
                             ),
-                          ),
-                          pw.SizedBox(width: 16),
+                            pw.SizedBox(width: 16),
+                          ],
                           pw.Expanded(
                             flex: 1,
                             child: pw.Column(
@@ -670,7 +621,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                               tr('Net', 'नेट'),
                               tr('Rate', 'रेट'),
                               tr('Making', 'मेकिंग'),
-                              tr('GST', 'जीएसटी'),
+                               tr('Others', 'Others'),
                               tr('Additional', 'अतिरिक्त'),
                               tr('R%', 'R%'),
                               tr('Total', 'कुल'),
@@ -702,7 +653,11 @@ extension _TotalPagePdfExtension on _TotalPageState {
                             item.weightValue.toStringAsFixed(3),
                             formatRateText(item),
                             formatMakingText(item),
-                            item.gstDisplay,
+                            item.gstAmount > 0
+                                ? PriceCalculator.formatIndianAmount(
+                                    item.gstAmount,
+                                  )
+                                : '-',
                             PriceCalculator.formatIndianAmount(
                               item.additionalAmount,
                             ),
@@ -744,11 +699,14 @@ extension _TotalPagePdfExtension on _TotalPageState {
                               horizontal: 2,
                               vertical: 1,
                             ),
-                            child: pw.Text(
-                              cell.toString(),
-                              maxLines: 1,
-                              overflow: pw.TextOverflow.clip,
-                              style: const pw.TextStyle(fontSize: 8.0),
+                            child: pw.FittedBox(
+                              fit: pw.BoxFit.scaleDown,
+                              alignment: pw.Alignment.centerLeft,
+                              child: pw.Text(
+                                cell.toString(),
+                                maxLines: 1,
+                                style: const pw.TextStyle(fontSize: 8.0),
+                              ),
                             ),
                           );
                         },
@@ -863,13 +821,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                     '-${PriceCalculator.formatIndianAmount(discount)}',
                                   ),
                                 keyValue(
-                                  tr('Total GST Paid', 'जीएसटी कुल'),
-                                  PriceCalculator.formatIndianAmount(
-                                    data.selectedGstTotal,
-                                  ),
-                                ),
-                                keyValue(
-                                  tr('Grand Total Payable', 'देय कुल राशि'),
+                                  tr('Total Payable', 'देय कुल राशि'),
                                   PriceCalculator.formatIndianAmount(
                                     netPayable,
                                   ),
@@ -1018,8 +970,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                 pw.SizedBox(height: 5),
                                 keyValue(
                                   tr(
-                                    'Total Amount Received',
-                                    'प्राप्त कुल राशि',
+                                    'Total Amount',
+                                    'कुल राशि',
                                   ),
                                   PriceCalculator.formatIndianAmount(
                                     totalReceived,
@@ -1032,21 +984,16 @@ extension _TotalPagePdfExtension on _TotalPageState {
                         ],
                       ),
                     ]),
-                    sectionTitle(tr('Terms & Policies', 'नियम व शर्तें')),
-                    pw.Text(
-                      tr(
-                        '1. Exchange or buyback value is decided as per prevailing shop policy.',
-                        '1. एक्सचेंज या बायबैक मूल्य दुकान की वर्तमान नीति के अनुसार तय होगा।',
+                    if (billStatus == 'PENDING')
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 12),
+                        child: pw.Center(
+                          child: pw.Text(
+                            'BILL PENDING',
+                            style: sectionStyle,
+                          ),
+                        ),
                       ),
-                      style: labelStyle,
-                    ),
-                    pw.Text(
-                      tr(
-                        '2. Please keep this bill for future exchange and service.',
-                        '2. कृपया भविष्य के एक्सचेंज और सेवा हेतु यह बिल संभालकर रखें।',
-                      ),
-                      style: labelStyle,
-                    ),
                   ],
                 ),
               ),
