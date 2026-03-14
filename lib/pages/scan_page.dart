@@ -102,7 +102,9 @@ class _ScanPageState extends State<ScanPage> {
     try {
       await _audioPlayer.stop();
       await _audioPlayer.play(
-        AssetSource('sounds/universfield-new-notification-09-352705.mp3'),
+        AssetSource(
+          'sounds/ksjsbwuil-apple-pay-success-sound-effect-481188.mp3',
+        ),
         volume: 1.0,
       );
     } catch (_) {

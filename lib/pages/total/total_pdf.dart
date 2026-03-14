@@ -526,39 +526,56 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     ),
                     pw.SizedBox(height: 8),
                     borderedBlock([
-                      pw.Row(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      pw.Stack(
+                        alignment: pw.Alignment.center,
                         children: [
-                          pw.Expanded(
-                            child: pw.RichText(
-                              text: pw.TextSpan(
-                                children: [
-                                  pw.TextSpan(
-                                    text: 'ESTIMATED',
-                                    style: sectionStyle.copyWith(
-                                      fontWeight: pw.FontWeight.bold,
-                                      fontSize: 12.2,
-                                    ),
-                                  ),
-                                ],
+                          pw.Center(
+                            child: pw.Text(
+                              'ESTIMATED',
+                              style: sectionStyle.copyWith(
+                                fontWeight: pw.FontWeight.bold,
+                                fontSize: 12.2,
                               ),
+                              textAlign: pw.TextAlign.center,
                             ),
                           ),
-                          pw.Text(
-                            'Date: $billDateShort',
-                            style: valueStyle,
-                            textAlign: pw.TextAlign.right,
+                          pw.Positioned(
+                            right: 0,
+                            child: pw.Text(
+                              'Date: $billDateShort',
+                              style: valueStyle,
+                              textAlign: pw.TextAlign.right,
+                            ),
                           ),
                         ],
                       ),
                       pw.SizedBox(height: 6),
-                      pw.Center(
-                        child: pw.Text(
-                          '${normalizedCustomerName.isEmpty ? 'Customer: ______________________' : 'Customer: $normalizedCustomerName'}     '
-                          '${normalizedCustomerMobile.isEmpty ? 'Mobile: ______________________' : 'Mobile: $normalizedCustomerMobile'}',
-                          style: valueStyle,
-                          textAlign: pw.TextAlign.center,
-                        ),
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Expanded(
+                            child: pw.Text(
+                              normalizedCustomerName.isEmpty
+                                  ? 'Name: ______________________________________'
+                                  : 'Name: $normalizedCustomerName',
+                              style: valueStyle,
+                              textAlign: pw.TextAlign.left,
+                            ),
+                          ),
+                          pw.SizedBox(width: 8),
+                          pw.Expanded(
+                            child: pw.Align(
+                              alignment: pw.Alignment.centerRight,
+                              child: pw.Text(
+                                normalizedCustomerMobile.isEmpty
+                                    ? 'Mobile: ______________________'
+                                    : 'Mobile: $normalizedCustomerMobile',
+                                style: valueStyle,
+                                textAlign: pw.TextAlign.right,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ]),
                     pw.SizedBox(height: 8),
