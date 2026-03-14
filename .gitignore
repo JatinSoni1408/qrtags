@@ -11,6 +11,11 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+.git-filter-repo-replacements.txt
+
+# Firebase config (keep real files out of VCS)
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
 
 # IntelliJ related
 *.iml

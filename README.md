@@ -32,3 +32,7 @@ How to run:
 2. Open `Actions` tab in your repo.
 3. Select `iOS Build (No Codesign)`.
 4. Click `Run workflow`.
+
+## Firebase config
+
+Real Firebase config files are gitignored. Follow `docs/SECRETS.md` to supply `ios/Runner/GoogleService-Info.plist` and `android/app/google-services.json` locally or in CI without committing them.

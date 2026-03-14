@@ -3,28 +3,28 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>[REDACTED_GOOGLE_API_KEY]</string>
+	<string>__GOOGLE_API_KEY__</string>
 	<key>GCM_SENDER_ID</key>
-	<string>548456755056</string>
+	<string>__PROJECT_NUMBER__</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.example.shubhamJewellers</string>
 	<key>PROJECT_ID</key>
-	<string>shubham-jewellers-1976</string>
+	<string>__PROJECT_ID__</string>
 	<key>STORAGE_BUCKET</key>
-	<string>shubham-jewellers-1976.firebasestorage.app</string>
+	<string>__PROJECT_ID__.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_APPINVITE_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_GCM_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_SIGNIN_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:548456755056:ios:9606c41a5ac0cb2cf9a9b5</string>
+	<string>1:__PROJECT_NUMBER__:ios:__APP_ID_SUFFIX__</string>
 </dict>
 </plist>
