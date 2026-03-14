@@ -197,21 +197,16 @@ extension _TotalPagePdfExtension on _TotalPageState {
       return item.returnPurity;
     }
 
-    final additionalTypeTotals = <String, double>{};
-    for (final item in data.selectedItems) {
-      for (final entry in item.additionalBreakup.entries) {
-        additionalTypeTotals[entry.key] =
-            (additionalTypeTotals[entry.key] ?? 0.0) + entry.value;
-      }
-    }
-    final additionalTypeKeys = additionalTypeTotals.keys.toList()..sort();
-    final totalAdditionalCharges = additionalTypeTotals.values.fold<double>(
+    final itemsWithAdditionals = data.selectedItems
+        .where((item) => item.additionalBreakup.isNotEmpty)
+        .toList();
+    final totalAdditionalCharges = itemsWithAdditionals.fold<double>(
       0.0,
-      (sum, value) => sum + value,
+      (sum, item) => sum + item.additionalAmount,
     );
 
     pw.Widget buildAdditionalTable() {
-      if (additionalTypeTotals.isEmpty) {
+      if (itemsWithAdditionals.isEmpty) {
         return pw.SizedBox.shrink();
       }
 
@@ -250,25 +245,27 @@ extension _TotalPagePdfExtension on _TotalPageState {
           pw.TableRow(
             decoration: const pw.BoxDecoration(color: PdfColors.grey300),
             children: [
-              cell(tr('Additional Name', 'अतिरिक्त नाम'), bold: true),
+              cell(tr('Additional', 'अतिरिक्त'), bold: true),
+              cell(tr('Item', 'आइटम'), bold: true),
               cell(tr('Amount', 'राशि'), right: true, bold: true),
-              cell(tr('Total', 'कुल'), right: true, bold: true),
             ],
           ),
-          ...additionalTypeKeys.map(
-            (type) => pw.TableRow(
-              children: [
-                cell(type),
-                cell(
-                  PriceCalculator.formatIndianAmount(
-                    additionalTypeTotals[type] ?? 0.0,
+          ...itemsWithAdditionals.asMap().entries.expand((entry) {
+            final itemIndex = entry.key + 1;
+            final item = entry.value;
+            return item.additionalBreakup.entries.map(
+              (additional) => pw.TableRow(
+                children: [
+                  cell(additional.key),
+                  cell('$itemIndex. ${item.title}'),
+                  cell(
+                    PriceCalculator.formatIndianAmount(additional.value),
+                    right: true,
                   ),
-                  right: true,
-                ),
-                cell(''),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
           pw.TableRow(
             children: [
               cell(tr('Total', 'कुल'), bold: true),
@@ -285,7 +282,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
     }
 
     final amountSummaryRows = <pw.Widget>[
-      if (additionalTypeTotals.isNotEmpty) buildAdditionalTable(),
+      if (itemsWithAdditionals.isNotEmpty) buildAdditionalTable(),
     ];
 
     final categoryWeightTotals = <String, List<double>>{};
