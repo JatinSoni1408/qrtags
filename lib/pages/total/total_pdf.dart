@@ -205,6 +205,52 @@ extension _TotalPagePdfExtension on _TotalPageState {
       (sum, item) => sum + item.additionalAmount,
     );
 
+    final categoryWeightTotals = <String, List<double>>{};
+    for (final item in data.selectedItems) {
+      final category = item.category.trim().isEmpty ? 'Other' : item.category;
+      final bucket = categoryWeightTotals.putIfAbsent(
+        category,
+        () => <double>[0.0, 0.0, 0.0],
+      );
+      bucket[0] += item.grossWeight;
+      bucket[1] += item.lessWeight;
+      bucket[2] += item.weightValue;
+    }
+    const preferredCategoryOrder = <String>['Gold22kt', 'Gold18kt', 'Silver'];
+    final otherCategories =
+        categoryWeightTotals.keys
+            .where((key) => !preferredCategoryOrder.contains(key))
+            .toList()
+          ..sort();
+    final orderedCategories = <String>[
+      ...preferredCategoryOrder.where(categoryWeightTotals.containsKey),
+      ...otherCategories,
+    ];
+    final categoryRank = <String, int>{
+      for (var i = 0; i < orderedCategories.length; i++)
+        orderedCategories[i]: i,
+    };
+    final selectedItemsForBreakup = data.selectedItems.toList()
+      ..sort((a, b) {
+        final aCategory = a.category.trim().isEmpty ? 'Other' : a.category;
+        final bCategory = b.category.trim().isEmpty ? 'Other' : b.category;
+        final aRank = categoryRank[aCategory] ?? orderedCategories.length;
+        final bRank = categoryRank[bCategory] ?? orderedCategories.length;
+        final byCategory = aRank.compareTo(bRank);
+        if (byCategory != 0) {
+          return byCategory;
+        }
+        final byWeight = b.weightValue.compareTo(a.weightValue);
+        if (byWeight != 0) {
+          return byWeight;
+        }
+        return a.title.compareTo(b.title);
+      });
+    final itemSerialOrder = <_SelectedItemView, int>{
+      for (var i = 0; i < selectedItemsForBreakup.length; i++)
+        selectedItemsForBreakup[i]: i + 1,
+    };
+
     pw.Widget buildAdditionalTable() {
       if (itemsWithAdditionals.isEmpty) {
         return pw.SizedBox.shrink();
@@ -234,6 +280,32 @@ extension _TotalPagePdfExtension on _TotalPageState {
         );
       }
 
+      pw.Widget fittedItemCell(
+        String text, {
+        bool bold = false,
+      }) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+          child: pw.Align(
+            alignment: pw.Alignment.centerLeft,
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Text(
+                text,
+                maxLines: 1,
+                softWrap: false,
+                overflow: pw.TextOverflow.clip,
+                style: pw.TextStyle(
+                  fontSize: 9.3,
+                  fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       return pw.Table(
         border: pw.TableBorder.all(width: 0.6, color: PdfColors.black),
         columnWidths: {
@@ -246,26 +318,31 @@ extension _TotalPagePdfExtension on _TotalPageState {
             decoration: const pw.BoxDecoration(color: PdfColors.grey300),
             children: [
               cell(tr('Additional', 'अतिरिक्त'), bold: true),
-              cell(tr('Item', 'आइटम'), bold: true),
+              fittedItemCell(tr('Item', 'आइटम'), bold: true),
               cell(tr('Amount', 'राशि'), right: true, bold: true),
             ],
           ),
-          ...itemsWithAdditionals.asMap().entries.expand((entry) {
-            final itemIndex = entry.key + 1;
-            final item = entry.value;
-            return item.additionalBreakup.entries.map(
-              (additional) => pw.TableRow(
-                children: [
-                  cell(additional.key),
-                  cell('$itemIndex. ${item.title}'),
-                  cell(
-                    PriceCalculator.formatIndianAmount(additional.value),
-                    right: true,
-                  ),
-                ],
-              ),
-            );
-          }),
+          ...(() {
+            final sorted = itemsWithAdditionals.toList()
+              ..sort((a, b) => (itemSerialOrder[a] ?? 0)
+                  .compareTo(itemSerialOrder[b] ?? 0));
+            return sorted.expand((item) {
+              final itemIndex = itemSerialOrder[item] ??
+                  (itemsWithAdditionals.indexOf(item) + 1);
+              return item.additionalBreakup.entries.map(
+                (additional) => pw.TableRow(
+                  children: [
+                    cell(additional.key),
+                    fittedItemCell('$itemIndex. ${item.title}'),
+                    cell(
+                      PriceCalculator.formatIndianAmount(additional.value),
+                      right: true,
+                    ),
+                  ],
+                ),
+              );
+            });
+          })(),
           pw.TableRow(
             children: [
               cell(tr('Total', 'कुल'), bold: true),
@@ -285,27 +362,12 @@ extension _TotalPagePdfExtension on _TotalPageState {
       if (itemsWithAdditionals.isNotEmpty) buildAdditionalTable(),
     ];
 
-    final categoryWeightTotals = <String, List<double>>{};
-    for (final item in data.selectedItems) {
-      final category = item.category.trim().isEmpty ? 'Other' : item.category;
-      final bucket = categoryWeightTotals.putIfAbsent(
-        category,
-        () => <double>[0.0, 0.0, 0.0],
-      );
-      bucket[0] += item.grossWeight;
-      bucket[1] += item.lessWeight;
-      bucket[2] += item.weightValue;
+    String categoryLabel(String key) {
+      final normalized = key.trim().toLowerCase();
+      if (normalized == 'gold22kt') return 'Gold 22K';
+      if (normalized == 'gold18kt') return 'Gold 18K';
+      return key;
     }
-    const preferredCategoryOrder = <String>['Gold22kt', 'Gold18kt', 'Silver'];
-    final otherCategories =
-        categoryWeightTotals.keys
-            .where((key) => !preferredCategoryOrder.contains(key))
-            .toList()
-          ..sort();
-    final orderedCategories = <String>[
-      ...preferredCategoryOrder.where(categoryWeightTotals.containsKey),
-      ...otherCategories,
-    ];
 
     final categoryWeightRows = <pw.Widget>[
       if (orderedCategories.isNotEmpty)
@@ -386,7 +448,11 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       horizontal: 6,
                       vertical: 4,
                     ),
-                    child: pw.Text(category, maxLines: 1, style: labelStyle),
+                    child: pw.Text(
+                      categoryLabel(category),
+                      maxLines: 1,
+                      style: labelStyle,
+                    ),
                   ),
                   pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(
@@ -453,26 +519,6 @@ extension _TotalPagePdfExtension on _TotalPageState {
         isUpi ? PriceCalculator.formatIndianAmount(row.amount) : '-',
       ];
     }).toList();
-    final categoryRank = <String, int>{
-      for (var i = 0; i < orderedCategories.length; i++)
-        orderedCategories[i]: i,
-    };
-    final selectedItemsForBreakup = data.selectedItems.toList()
-      ..sort((a, b) {
-        final aCategory = a.category.trim().isEmpty ? 'Other' : a.category;
-        final bCategory = b.category.trim().isEmpty ? 'Other' : b.category;
-        final aRank = categoryRank[aCategory] ?? orderedCategories.length;
-        final bRank = categoryRank[bCategory] ?? orderedCategories.length;
-        final byCategory = aRank.compareTo(bRank);
-        if (byCategory != 0) {
-          return byCategory;
-        }
-        final byWeight = b.weightValue.compareTo(a.weightValue);
-        if (byWeight != 0) {
-          return byWeight;
-        }
-        return a.title.compareTo(b.title);
-      });
 
     // Extra left margin keeps text safe from 2-hole/4-hole punchers.
     const pdfLeftPunchMargin = 46.0;
@@ -511,13 +557,13 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           ? pw.Text(
                               'Shree',
                               style: pw.TextStyle(
-                                fontSize: 5,
+                                fontSize: 16,
                                 fontWeight: pw.FontWeight.bold,
                               ),
                             )
                           : pw.Image(
                               shreeHeaderImage,
-                              width: 35,
+                              width: 130,
                               fit: pw.BoxFit.contain,
                             ),
                     ),
@@ -637,7 +683,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                               tr('Making', 'मेकिंग'),
                                tr('Others', 'Others'),
                               tr('Additional', 'अतिरिक्त'),
-                              tr('R%', 'R%'),
+                              tr('Purity', 'शुद्धता'),
                               tr('Total', 'कुल'),
                             ].map((text) {
                               return pw.Center(
@@ -661,7 +707,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           return [
                             '$index',
                             item.title,
-                            item.categoryDisplay,
+                            categoryLabel(item.categoryDisplay),
                             item.grossWeight.toStringAsFixed(3),
                             item.lessWeight.toStringAsFixed(3),
                             item.weightValue.toStringAsFixed(3),
@@ -738,7 +784,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           3: const pw.FlexColumnWidth(1.1),
                           4: const pw.FlexColumnWidth(1.0),
                           5: const pw.FlexColumnWidth(1.0),
-                          6: const pw.FlexColumnWidth(1.4),
+                          6: const pw.FlexColumnWidth(1.2), // Rate (slightly narrower)
                           7: const pw.FlexColumnWidth(1.0),
                           8: const pw.FlexColumnWidth(1.1),
                           9: const pw.FlexColumnWidth(1.6),

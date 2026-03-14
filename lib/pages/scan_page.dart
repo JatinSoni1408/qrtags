@@ -993,8 +993,8 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
   static const String _lessCategoriesCollection = 'less_categories';
   static const String _additionalTypesCollection = 'additional_types';
   static const List<String> _defaultCategories = [
-    'Gold22kt',
     'Gold18kt',
+    'Gold22kt',
     'Silver',
   ];
   static const List<String> _defaultMakingTypesGold = [
@@ -1079,6 +1079,20 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     values.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 
+  void _ensureGoldOrder() {
+    final has18 = _categories.contains('Gold18kt');
+    final has22 = _categories.contains('Gold22kt');
+    _categories.removeWhere(
+      (value) => value == 'Gold18kt' || value == 'Gold22kt',
+    );
+    if (has18) {
+      _categories.insert(0, 'Gold18kt');
+    }
+    if (has22) {
+      _categories.insert(has18 ? 1 : 0, 'Gold22kt');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1132,6 +1146,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _categories = (categories == null || categories.isEmpty)
             ? List<String>.from(_defaultCategories)
             : categories;
+        _ensureGoldOrder();
         _makingTypesGold = (makingGold == null || makingGold.isEmpty)
             ? List<String>.from(_defaultMakingTypesGold)
             : makingGold;
@@ -1147,6 +1162,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _selectedCategory = null;
         _selectedMakingType = null;
         _applyInitialDataIfAny();
+        _applyDefaultsIfNewEntry();
         _loading = false;
       });
       _startLessCategoriesSync();
@@ -1160,6 +1176,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _selectedCategory = null;
         _selectedMakingType = null;
         _applyInitialDataIfAny();
+        _applyDefaultsIfNewEntry();
         _loading = false;
       });
       _startLessCategoriesSync();
@@ -1387,6 +1404,33 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     }
 
     _recalculateWeights();
+  }
+
+  void _applyDefaultsIfNewEntry() {
+    if (widget.initialData != null) {
+      return;
+    }
+    if (_selectedCategory == null) {
+      if (_categories.contains('Gold22kt')) {
+        _selectedCategory = 'Gold22kt';
+      } else if (_categories.isNotEmpty) {
+        _selectedCategory = _categories.first;
+      }
+    }
+
+    final makingList = _makingTypesForCategory(_selectedCategory);
+    if (_selectedMakingType == null) {
+      if (makingList.contains('Percentage')) {
+        _selectedMakingType = 'Percentage';
+      } else if (makingList.isNotEmpty) {
+        _selectedMakingType = makingList.first;
+      }
+    }
+
+    if (_makingChargeController.text.trim().isEmpty &&
+        _selectedMakingType == 'Percentage') {
+      _makingChargeController.text = '13';
+    }
   }
 
   List<String> _makingTypesForCategory(String? category) {

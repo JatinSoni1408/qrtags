@@ -459,30 +459,37 @@ class _TotalPageState extends State<TotalPage> {
   }
 
   Future<Uint8List?> _buildShreeHeaderPng() async {
-    const text = '\u0936\u094d\u0930\u0940';
-    const horizontalPadding = 12.0;
-    const verticalPadding = 4.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final painter = TextPainter(
-      text: const TextSpan(
-        text: text,
-        style: TextStyle(
-          color: Colors.black,
-          fontSize: 42,
-          fontWeight: FontWeight.w700,
+    // Prefer the provided asset; fallback to drawn text if unavailable.
+    try {
+      final data = await rootBundle.load('assets/images/shree.png');
+      return data.buffer.asUint8List();
+    } catch (_) {
+      const text = '॥ \u0936\u094d\u0930\u0940\u0903 ॥';
+      const horizontalPadding = 18.0;
+      const verticalPadding = 6.0;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final painter = TextPainter(
+        text: const TextSpan(
+          text: text,
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 78,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.8,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-    );
-    painter.layout();
-    final width = (painter.width + (horizontalPadding * 2)).ceil();
-    final height = (painter.height + (verticalPadding * 2)).ceil();
-    painter.paint(canvas, const Offset(horizontalPadding, verticalPadding));
-    final image = await recorder.endRecording().toImage(width, height);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      );
+      painter.layout();
+      final width = (painter.width + (horizontalPadding * 2)).ceil();
+      final height = (painter.height + (verticalPadding * 2)).ceil();
+      painter.paint(canvas, const Offset(horizontalPadding, verticalPadding));
+      final image = await recorder.endRecording().toImage(width, height);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    }
   }
 
   Future<Uint8List?> _getShreeHeaderBytes() async {
