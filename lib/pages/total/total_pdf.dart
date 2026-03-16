@@ -284,24 +284,35 @@ extension _TotalPagePdfExtension on _TotalPageState {
         String text, {
         bool bold = false,
       }) {
+        final displayText = text.trim().isEmpty ? '' : text;
         return pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
           child: pw.Align(
             alignment: pw.Alignment.centerLeft,
-            child: pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              alignment: pw.Alignment.centerLeft,
-              child: pw.Text(
-                text,
-                maxLines: 1,
-                softWrap: false,
-                overflow: pw.TextOverflow.clip,
-                style: pw.TextStyle(
-                  fontSize: 9.3,
-                  fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-                ),
-              ),
-            ),
+            child: displayText.isEmpty
+                ? pw.Text(
+                    '',
+                    style: pw.TextStyle(
+                      fontSize: 9.3,
+                      fontWeight:
+                          bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    ),
+                  )
+                : pw.FittedBox(
+                    fit: pw.BoxFit.scaleDown,
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Text(
+                      displayText,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: pw.TextOverflow.clip,
+                      style: pw.TextStyle(
+                        fontSize: 9.3,
+                        fontWeight:
+                            bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                      ),
+                    ),
+                  ),
           ),
         );
       }
@@ -541,29 +552,25 @@ extension _TotalPagePdfExtension on _TotalPageState {
               effectivePageFormat.width - pdfLeftPunchMargin - pdfRightMargin;
           final contentHeight =
               effectivePageFormat.height - pdfTopMargin - pdfBottomMargin;
-          return pw.SizedBox(
-            width: contentWidth,
-            height: contentHeight,
-            child: pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              alignment: pw.Alignment.topCenter,
-              child: pw.SizedBox(
-                width: contentWidth,
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                  children: [
-                    pw.Center(
+
+          pw.Widget buildBillContent() {
+            return pw.SizedBox(
+              width: contentWidth,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Center(
                       child: shreeHeaderImage == null
                           ? pw.Text(
                               'Shree',
                               style: pw.TextStyle(
-                                fontSize: 16,
+                                fontSize: 7,
                                 fontWeight: pw.FontWeight.bold,
                               ),
                             )
                           : pw.Image(
                               shreeHeaderImage,
-                              width: 130,
+                              width: 55,
                               fit: pw.BoxFit.contain,
                             ),
                     ),
@@ -754,20 +761,28 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           fontSize: 8.6,
                         ),
                         cellBuilder: (index, cell, rowNum) {
+                          final cellText = cell?.toString() ?? '';
+                          final displayText =
+                              cellText.trim().isEmpty ? '' : cellText;
                           return pw.Padding(
                             padding: const pw.EdgeInsets.symmetric(
                               horizontal: 2,
                               vertical: 1,
                             ),
-                            child: pw.FittedBox(
-                              fit: pw.BoxFit.scaleDown,
-                              alignment: pw.Alignment.centerLeft,
-                              child: pw.Text(
-                                cell.toString(),
-                                maxLines: 1,
-                                style: const pw.TextStyle(fontSize: 8.0),
-                              ),
-                            ),
+                            child: displayText.isEmpty
+                                ? pw.Text(
+                                    '',
+                                    style: pw.TextStyle(fontSize: 8.0),
+                                  )
+                                : pw.FittedBox(
+                                    fit: pw.BoxFit.scaleDown,
+                                    alignment: pw.Alignment.centerLeft,
+                                    child: pw.Text(
+                                      displayText,
+                                      maxLines: 1,
+                                      style: const pw.TextStyle(fontSize: 8.0),
+                                    ),
+                                  ),
                           );
                         },
                         border: pw.TableBorder.all(
@@ -1054,9 +1069,29 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           ),
                         ),
                       ),
-                  ],
-                ),
+                ],
               ),
+            );
+          }
+
+          pw.Widget buildHalfBill() {
+            return pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.topCenter,
+              child: buildBillContent(),
+            );
+          }
+
+          return pw.SizedBox(
+            width: contentWidth,
+            height: contentHeight,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                pw.Expanded(child: buildHalfBill()),
+                pw.Container(height: 0.8, color: PdfColors.grey500),
+                pw.Expanded(child: buildHalfBill()),
+              ],
             ),
           );
         },
