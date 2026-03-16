@@ -1075,6 +1075,21 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
   CollectionReference<Map<String, dynamic>> get _additionalTypesRef =>
       _firestore.collection(_additionalTypesCollection);
 
+  String _capitalizeFirstAlphabet(String value) {
+    final match = RegExp(r'[A-Za-z]').firstMatch(value);
+    if (match == null) {
+      return value;
+    }
+    final index = match.start;
+    final chars = value.split('');
+    final upper = chars[index].toUpperCase();
+    if (chars[index] == upper) {
+      return value;
+    }
+    chars[index] = upper;
+    return chars.join();
+  }
+
   void _sortList(List<String> values) {
     values.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
@@ -1356,7 +1371,9 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
         _returnPurityOptions.contains(returnPurity)) {
       _selectedReturnPurity = returnPurity;
     }
-    _itemNameController.text = data['itemName']?.toString() ?? '';
+    _itemNameController.text = _capitalizeFirstAlphabet(
+      data['itemName']?.toString() ?? '',
+    );
     _makingChargeController.text = data['makingCharge']?.toString() ?? '';
     _grossWeightController.text = data['grossWeight']?.toString() ?? '';
 
@@ -1672,7 +1689,21 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
                     .copyWith(
                       errorText: _requiredFieldError(_itemNameController.text),
                     ),
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {
+                  final updated = _capitalizeFirstAlphabet(
+                    _itemNameController.text,
+                  );
+                  if (updated != _itemNameController.text) {
+                    final selection = _itemNameController.selection;
+                    _itemNameController.value =
+                        _itemNameController.value.copyWith(
+                          text: updated,
+                          selection: selection,
+                          composing: TextRange.empty,
+                        );
+                  }
+                  setState(() {});
+                },
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
