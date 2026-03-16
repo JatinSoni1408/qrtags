@@ -1075,10 +1075,17 @@ extension _TotalPagePdfExtension on _TotalPageState {
           }
 
           pw.Widget buildHalfBill() {
+            return buildBillContent();
+          }
+
+          pw.Widget buildRotatedHalfBill() {
             return pw.FittedBox(
               fit: pw.BoxFit.scaleDown,
-              alignment: pw.Alignment.topCenter,
-              child: buildBillContent(),
+              alignment: pw.Alignment.center,
+              child: pw.Transform.rotateBox(
+                angle: math.pi / 2,
+                child: buildHalfBill(),
+              ),
             );
           }
 
@@ -1088,9 +1095,11 @@ extension _TotalPagePdfExtension on _TotalPageState {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
-                pw.Expanded(child: buildHalfBill()),
+                pw.Expanded(child: buildRotatedHalfBill()),
+                pw.SizedBox(height: 8),
                 pw.Container(height: 0.8, color: PdfColors.grey500),
-                pw.Expanded(child: buildHalfBill()),
+                pw.SizedBox(height: 8),
+                pw.Expanded(child: buildRotatedHalfBill()),
               ],
             ),
           );
