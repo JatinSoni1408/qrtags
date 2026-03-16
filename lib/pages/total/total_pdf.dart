@@ -1079,12 +1079,15 @@ extension _TotalPagePdfExtension on _TotalPageState {
           }
 
           pw.Widget buildRotatedHalfBill() {
-            return pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              alignment: pw.Alignment.center,
-              child: pw.Transform.rotateBox(
-                angle: math.pi / 2,
-                child: buildHalfBill(),
+            return pw.Align(
+              alignment: pw.Alignment.centerLeft,
+              child: pw.FittedBox(
+                fit: pw.BoxFit.scaleDown,
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Transform.rotateBox(
+                  angle: math.pi / 2,
+                  child: buildHalfBill(),
+                ),
               ),
             );
           }
