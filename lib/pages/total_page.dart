@@ -92,6 +92,7 @@ class _TotalPageState extends State<TotalPage> {
   bool _finishingTransaction = false;
   bool _printingBill = false;
   bool _sharingBill = false;
+  bool _previewSingleBill = false;
   _TakeawayMode? _activeTakeawayMode;
   late Future<_TotalsData> _totalsFuture;
 
@@ -109,6 +110,15 @@ class _TotalPageState extends State<TotalPage> {
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  void _togglePreviewSingleBill() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _previewSingleBill = !_previewSingleBill;
+    });
+  }
 
   String? get _customerMobileError =>
       TotalCustomerValidator.validateMobile(_customerMobileController.text);

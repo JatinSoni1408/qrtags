@@ -48,6 +48,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
     String customerName,
     String customerMobile,
     PdfPageFormat? pageFormat,
+    bool singleBill,
   ) async {
     final doc = pw.Document();
     final effectivePageFormat = pageFormat ?? _TotalPageState._billPageFormat;
@@ -1092,6 +1093,17 @@ extension _TotalPagePdfExtension on _TotalPageState {
             );
           }
 
+          if (singleBill) {
+            return pw.SizedBox(
+              width: contentWidth,
+              height: contentHeight,
+              child: pw.Align(
+                alignment: pw.Alignment.topLeft,
+                child: buildBillContent(),
+              ),
+            );
+          }
+
           return pw.SizedBox(
             width: contentWidth,
             height: contentHeight,
@@ -1262,6 +1274,16 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     },
                   ),
                   PdfPreviewAction(
+                    icon: Icon(
+                      _previewSingleBill
+                          ? Icons.view_comfy
+                          : Icons.view_agenda,
+                    ),
+                    onPressed: (actionContext, build, pageFormat) async {
+                      _togglePreviewSingleBill();
+                    },
+                  ),
+                  PdfPreviewAction(
                     icon: const Icon(Icons.share),
                     onPressed: (actionContext, build, pageFormat) async {
                       await shareBill(
@@ -1281,6 +1303,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   customerName,
                   customerMobile,
                   pageFormat,
+                  _previewSingleBill,
                 ),
               ),
             ),
