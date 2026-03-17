@@ -57,6 +57,7 @@ class _GeneratePageState extends State<GeneratePage> {
   static const String _categoriesCollection = 'categories';
   static const String _makingTypesGoldCollection = 'making_types_gold';
   static const String _makingTypesSilverCollection = 'making_types_silver';
+  static const String _locationsCollection = 'locations';
   String? _selectedCategory;
   String? _selectedMakingType;
   String? _selectedReturnPurity;
@@ -126,6 +127,7 @@ class _GeneratePageState extends State<GeneratePage> {
   final List<String> _additionalTypes = [];
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _itemNamesSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _locationsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _lessCategoriesSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _additionalTypesSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _categoriesSub;
@@ -133,6 +135,7 @@ class _GeneratePageState extends State<GeneratePage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
   _makingTypesSilverSub;
   bool _seedingItemNames = false;
+  bool _seedingLocations = false;
   bool _seedingLessCategories = false;
   bool _seedingAdditionalTypes = false;
   bool _seedingCategories = false;
@@ -151,6 +154,11 @@ class _GeneratePageState extends State<GeneratePage> {
       _firestore.collection(_itemNamesCollection);
 
   String _normalizeLocation(String value) => value.trim();
+
+  String _locationDocId(String value) => value.trim().toLowerCase();
+
+  CollectionReference<Map<String, dynamic>> get _locationsRef =>
+      _firestore.collection(_locationsCollection);
 
   String _normalizeLessCategory(String value) => value.trim();
 
@@ -220,6 +228,7 @@ class _GeneratePageState extends State<GeneratePage> {
     _loadPrefs().then((_) {
       _resetForm(restoreLastRequiredValues: true);
       _startItemNamesSync();
+      _startLocationsSync();
       _startLessCategoriesSync();
       _startAdditionalTypesSync();
       _startCategoriesSync();
@@ -234,6 +243,7 @@ class _GeneratePageState extends State<GeneratePage> {
   void dispose() {
     widget.editRequest.removeListener(_handleEditRequest);
     _itemNamesSub?.cancel();
+    _locationsSub?.cancel();
     _lessCategoriesSub?.cancel();
     _additionalTypesSub?.cancel();
     _categoriesSub?.cancel();
@@ -395,6 +405,154 @@ class _GeneratePageState extends State<GeneratePage> {
     }
     final docId = _itemNameDocId(normalized);
     await _itemNamesRef.doc(docId).delete();
+  }
+
+  void _startLocationsSync() {
+    _locationsSub?.cancel();
+    _locationsSub = _locationsRef.orderBy('nameLower').snapshots().listen((
+      snapshot,
+    ) async {
+      final names = snapshot.docs
+          .map((doc) => doc.data()['name']?.toString().trim())
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      if (names.isEmpty) {
+        await _seedLocationsIfEmpty();
+        return;
+      }
+
+      _sortList(names);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _locations
+          ..clear()
+          ..addAll(names);
+        if (_selectedLocation != null &&
+            !_locations.contains(_selectedLocation)) {
+          _selectedLocation = null;
+        }
+      });
+      await _saveLocationsToPrefs();
+    });
+    _seedLocationsIfEmpty();
+  }
+
+  Future<void> _seedLocationsIfEmpty() async {
+    if (_seedingLocations) {
+      return;
+    }
+    _seedingLocations = true;
+    try {
+      final existing = await _locationsRef.limit(1).get();
+      if (existing.docs.isNotEmpty) {
+        return;
+      }
+      final fromTags = await _loadLocationsFromTags();
+      final seedSource = fromTags.isNotEmpty
+          ? fromTags
+          : (_locations.isNotEmpty ? _locations : _defaultLocations);
+      final unique = <String>{};
+      final batch = _firestore.batch();
+      for (final name in seedSource) {
+        final normalized = _normalizeLocation(name);
+        if (normalized.isEmpty) {
+          continue;
+        }
+        final docId = _locationDocId(normalized);
+        if (!unique.add(docId)) {
+          continue;
+        }
+        batch.set(_locationsRef.doc(docId), {
+          'name': normalized,
+          'nameLower': docId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (unique.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // ignore seeding failures
+    } finally {
+      _seedingLocations = false;
+    }
+  }
+
+  Future<List<String>> _loadLocationsFromTags() async {
+    try {
+      final snapshot = await _tagRepository.getAllTags();
+      final tags = _tagRepository.toTagRecords(snapshot);
+      final unique = <String>{};
+      for (final tag in tags) {
+        final location = tag.location.trim();
+        if (location.isNotEmpty) {
+          unique.add(location);
+        }
+      }
+      return unique.toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _saveLocationsToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_locationsKey, _locations);
+  }
+
+  Future<void> _upsertLocationRemote(String name) async {
+    final normalized = _normalizeLocation(name);
+    if (normalized.isEmpty) {
+      return;
+    }
+    final docId = _locationDocId(normalized);
+    await _locationsRef.doc(docId).set({
+      'name': normalized,
+      'nameLower': docId,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _renameLocationRemote(String oldName, String newName) async {
+    final normalizedOld = _normalizeLocation(oldName);
+    final normalizedNew = _normalizeLocation(newName);
+    if (normalizedNew.isEmpty) {
+      return;
+    }
+    final oldId = _locationDocId(normalizedOld);
+    final newId = _locationDocId(normalizedNew);
+    if (oldId == newId) {
+      await _locationsRef.doc(oldId).set({
+        'name': normalizedNew,
+        'nameLower': newId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return;
+    }
+    final batch = _firestore.batch();
+    batch.set(_locationsRef.doc(newId), {
+      'name': normalizedNew,
+      'nameLower': newId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    batch.delete(_locationsRef.doc(oldId));
+    await batch.commit();
+  }
+
+  Future<void> _deleteLocationRemote(String name) async {
+    final normalized = _normalizeLocation(name);
+    if (normalized.isEmpty) {
+      return;
+    }
+    final docId = _locationDocId(normalized);
+    await _locationsRef.doc(docId).delete();
   }
 
   void _startLessCategoriesSync() {
@@ -1212,6 +1370,13 @@ class _GeneratePageState extends State<GeneratePage> {
           _editingTagId = doc.id;
           _editingOriginalData = Map<String, dynamic>.from(data);
         });
+        try {
+          if (locationText.isNotEmpty) {
+            await _upsertLocationRemote(locationText);
+          }
+        } catch (_) {
+          // ignore location sync failures
+        }
       } else {
         if (_isUnchangedUpdate(data)) {
           setState(() {
@@ -1230,6 +1395,13 @@ class _GeneratePageState extends State<GeneratePage> {
         setState(() {
           _qrData = 'QR1:${_editingTagId!}';
         });
+        try {
+          if (locationText.isNotEmpty) {
+            await _upsertLocationRemote(locationText);
+          }
+        } catch (_) {
+          // ignore location sync failures
+        }
         widget.onUpdated?.call();
         _resetForm(restoreLastRequiredValues: true);
       }
@@ -2238,6 +2410,15 @@ class _GeneratePageState extends State<GeneratePage> {
                 _selectedLocation = value;
               });
               setModalState(() {});
+              try {
+                if (existing != null) {
+                  await _renameLocationRemote(existing, value);
+                } else {
+                  await _upsertLocationRemote(value);
+                }
+              } catch (_) {
+                // ignore remote update failures
+              }
               await save();
               addController.clear();
             }
@@ -2255,6 +2436,11 @@ class _GeneratePageState extends State<GeneratePage> {
                 }
               });
               setModalState(() {});
+              try {
+                await _deleteLocationRemote(value);
+              } catch (_) {
+                // ignore remote update failures
+              }
               await save();
             }
 
