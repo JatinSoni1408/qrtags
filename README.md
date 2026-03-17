@@ -1,4 +1,4 @@
-# qrtags
+# SJ
 
 Flutter application for QR-based tag generation, scanning, inventory flow, and order workflows.
 
