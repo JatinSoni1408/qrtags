@@ -69,7 +69,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
         '${_twoDigits(now.day)}/${_twoDigits(now.month)}/${_twoDigits(now.year % 100)}';
     final hasGstApplied = data.selectedItems
         .any((item) => item.gstAmount.abs() > 0.000001);
-    final billStatus = hasGstApplied ? 'PENDING' : '-';
+    final hasNonCashEntry = paymentEntries.any(
+      (entry) => PaymentEntryCalculator.isNonCashMode(entry.mode),
+    );
+    final billStatus = (hasGstApplied || hasNonCashEntry) ? 'PENDING' : '-';
     await _getOrCreateInvoiceNumber(now: now);
     final sectionStyle = pw.TextStyle(
       fontSize: 11,
