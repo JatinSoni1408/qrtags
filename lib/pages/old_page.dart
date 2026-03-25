@@ -31,6 +31,7 @@ class _OldPageState extends State<OldPage> {
   late final VoidCallback _ratesListener;
 
   final List<String> _tanchOptions = [
+    'Fine',
     '.91',
     '.90',
     '.89',
@@ -159,6 +160,17 @@ class _OldPageState extends State<OldPage> {
       returnBhav != 'Gold22kt' &&
       returnBhav != 'Gold18kt';
 
+  double _tanchMultiplier(String? tanch) {
+    final normalized = tanch?.trim() ?? '';
+    if (normalized.isEmpty) {
+      return 0.0;
+    }
+    if (normalized.toLowerCase() == 'fine') {
+      return 1.0;
+    }
+    return double.tryParse(normalized) ?? 0.0;
+  }
+
   double _calculateOldAmount({
     required double netWeight,
     required String? returnBhav,
@@ -168,7 +180,7 @@ class _OldPageState extends State<OldPage> {
     if (!_usesTanch(returnBhav)) {
       return netWeight * returnValue;
     }
-    final tanchValue = double.tryParse(tanch ?? '') ?? 0.0;
+    final tanchValue = _tanchMultiplier(tanch);
     return netWeight * returnValue * tanchValue;
   }
 
@@ -397,10 +409,11 @@ class _OldPageState extends State<OldPage> {
           builder: (dialogContext, setDialogState) {
             final tanchEnabled = _usesTanch(_selectedReturnBhav);
             return AlertDialog(
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              contentPadding:
-                  const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -457,8 +470,9 @@ class _OldPageState extends State<OldPage> {
                                     overflow: TextOverflow.ellipsis,
                                     style: disabled
                                         ? TextStyle(
-                                            color:
-                                                Theme.of(context).disabledColor,
+                                            color: Theme.of(
+                                              context,
+                                            ).disabledColor,
                                           )
                                         : null,
                                   ),
@@ -501,8 +515,8 @@ class _OldPageState extends State<OldPage> {
                               controller: _grossWeightController,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Gross Weight',
                                 border: OutlineInputBorder(),
@@ -515,8 +529,8 @@ class _OldPageState extends State<OldPage> {
                               controller: _lessWeightController,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               onTap: () {
                                 _lessWeightController.selection = TextSelection(
                                   baseOffset: 0,
@@ -529,16 +543,17 @@ class _OldPageState extends State<OldPage> {
                                 setDialogState(() {});
                               },
                               onEditingComplete: () {
-                                final value = double.tryParse(
-                                          _lessWeightController.text.trim(),
-                                        ) ??
-                                        0.0;
-                                _lessWeightController.text =
-                                    value.toStringAsFixed(3);
+                                final value =
+                                    double.tryParse(
+                                      _lessWeightController.text.trim(),
+                                    ) ??
+                                    0.0;
+                                _lessWeightController.text = value
+                                    .toStringAsFixed(3);
                                 _lessWeightController.selection =
                                     TextSelection.collapsed(
-                                  offset: _lessWeightController.text.length,
-                                );
+                                      offset: _lessWeightController.text.length,
+                                    );
                                 _updateNetWeight();
                                 setDialogState(() {});
                               },
@@ -554,8 +569,8 @@ class _OldPageState extends State<OldPage> {
                               controller: _autoNetWeightController,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               readOnly: true,
                               decoration: const InputDecoration(
                                 labelText: 'Net Weight',
@@ -639,9 +654,8 @@ class _OldPageState extends State<OldPage> {
                   child: const Text('Close'),
                 ),
                 ElevatedButton(
-                  onPressed: () => _addOrUpdateItem(
-                    dialogContext: dialogContext,
-                  ),
+                  onPressed: () =>
+                      _addOrUpdateItem(dialogContext: dialogContext),
                   child: const Text('Save'),
                 ),
               ],
@@ -742,7 +756,7 @@ class _OldPageState extends State<OldPage> {
     final netWeightText = _formatWeight(item.netWeight);
     final tanchRaw = item.tanch ?? '';
     final hasTanch = tanchRaw.trim().isNotEmpty;
-    final tanchValue = double.tryParse(tanchRaw) ?? 0.0;
+    final tanchValue = _tanchMultiplier(tanchRaw);
     switch (item.returnBhav) {
       case 'Silver':
         return '($netWeightText * ${tanchValue.toStringAsFixed(2)}) * ';
@@ -1062,9 +1076,7 @@ class _OldPageState extends State<OldPage> {
                       child: Text(
                         'No old items yet.\nTap "Add Old Item Details" to begin.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
                     ),
                   ),

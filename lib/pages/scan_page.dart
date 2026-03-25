@@ -1028,6 +1028,7 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
     '70%',
     '80%',
     '92%',
+    '100%',
   ];
 
   final TextEditingController _itemNameController = TextEditingController();
@@ -1695,8 +1696,8 @@ class _ManualItemDialogState extends State<_ManualItemDialog> {
                   );
                   if (updated != _itemNameController.text) {
                     final selection = _itemNameController.selection;
-                    _itemNameController.value =
-                        _itemNameController.value.copyWith(
+                    _itemNameController.value = _itemNameController.value
+                        .copyWith(
                           text: updated,
                           selection: selection,
                           composing: TextRange.empty,

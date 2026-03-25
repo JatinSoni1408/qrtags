@@ -111,7 +111,14 @@ class _GeneratePageState extends State<GeneratePage> {
   final List<String> _makingTypesGold = [];
   final List<String> _makingTypesSilver = [];
   final List<String> _percentageOptions = List.generate(11, (i) => '${i + 8}%');
-  final List<String> _returnPurityOptions = ['50%', '60%', '70%', '80%', '92%'];
+  final List<String> _returnPurityOptions = [
+    '50%',
+    '60%',
+    '70%',
+    '80%',
+    '92%',
+    '100%',
+  ];
   final List<String> _defaultLessCategories = ['Stones', 'Meena', 'Kundan'];
   final List<String> _lessCategories = [];
   final List<String> _defaultAdditionalTypes = [
@@ -1299,7 +1306,8 @@ class _GeneratePageState extends State<GeneratePage> {
     if (_grossWeightController.text.trim().isEmpty) {
       missingFields.add('Gross Weight');
     }
-    if (_selectedCategory == 'Silver' && (_selectedReturnPurity ?? '').isEmpty) {
+    if (_selectedCategory == 'Silver' &&
+        (_selectedReturnPurity ?? '').isEmpty) {
       missingFields.add('Return Purity');
     }
     if (missingFields.isNotEmpty) {
@@ -2478,8 +2486,9 @@ class _GeneratePageState extends State<GeneratePage> {
                         final selected = loc == _selectedLocation;
                         return ListTile(
                           title: Text(loc),
-                          leading:
-                              selected ? const Icon(Icons.check, color: Colors.green) : null,
+                          leading: selected
+                              ? const Icon(Icons.check, color: Colors.green)
+                              : null,
                           onTap: () {
                             setState(() => _selectedLocation = loc);
                             save();
@@ -2498,7 +2507,10 @@ class _GeneratePageState extends State<GeneratePage> {
                               ),
                               IconButton(
                                 tooltip: 'Delete',
-                                icon: const Icon(Icons.delete, color: Colors.red),
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () => remove(loc),
                               ),
                             ],
@@ -2979,7 +2991,8 @@ class _GeneratePageState extends State<GeneratePage> {
     final makingTypeValue = makingTypes.contains(_selectedMakingType)
         ? _selectedMakingType
         : null;
-    final returnPurityValue = _returnPurityOptions.contains(_selectedReturnPurity)
+    final returnPurityValue =
+        _returnPurityOptions.contains(_selectedReturnPurity)
         ? _selectedReturnPurity
         : null;
 
@@ -3048,49 +3061,49 @@ class _GeneratePageState extends State<GeneratePage> {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildItemNameField(context)),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(child: _buildItemNameField(context)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _locations.contains(_selectedLocation)
-                        ? _selectedLocation
-                        : null,
-                    hint: const Text('Location (optional)'),
-                    items: _locations
-                        .map(
-                          (loc) => DropdownMenuItem<String>(
-                            value: loc,
-                            child: Text(loc),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _locations.contains(_selectedLocation)
+                            ? _selectedLocation
+                            : null,
+                        hint: const Text('Location (optional)'),
+                        items: _locations
+                            .map(
+                              (loc) => DropdownMenuItem<String>(
+                                value: loc,
+                                child: Text(loc),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedLocation = value;
+                          });
+                          _saveIfNeeded();
+                        },
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedLocation = value;
-                      });
-                      _saveIfNeeded();
-                    },
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Manage locations',
+                      onPressed: _openLocationManager,
+                      icon: const Icon(Icons.edit_location_alt),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Manage locations',
-                  onPressed: _openLocationManager,
-                  icon: const Icon(Icons.edit_location_alt),
-                ),
-              ],
-            ),
               ],
             ),
             makingSection: Row(
@@ -3098,7 +3111,9 @@ class _GeneratePageState extends State<GeneratePage> {
                 Expanded(
                   flex: 5,
                   child: DropdownButtonFormField<String>(
-                    key: ValueKey('${categoryValue ?? ''}-${makingTypeValue ?? ''}'),
+                    key: ValueKey(
+                      '${categoryValue ?? ''}-${makingTypeValue ?? ''}',
+                    ),
                     initialValue: makingTypeValue,
                     isExpanded: true,
                     items: makingTypes
@@ -3290,7 +3305,8 @@ class _GeneratePageState extends State<GeneratePage> {
                             ),
                           ),
                           validator: (value) {
-                            if (_selectedCategory == 'Silver' && (value == null || value.isEmpty)) {
+                            if (_selectedCategory == 'Silver' &&
+                                (value == null || value.isEmpty)) {
                               return 'Required for Silver items';
                             }
                             return null;
