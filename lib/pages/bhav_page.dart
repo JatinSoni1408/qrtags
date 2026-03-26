@@ -133,7 +133,7 @@ class _BhavPageState extends State<BhavPage>
           ),
           const SizedBox(width: 8),
           Text(
-            '$value / Gram',
+            '$value / Gm.',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -177,7 +177,7 @@ class _BhavPageState extends State<BhavPage>
             ),
             const SizedBox(width: 8),
             Text(
-              '$value / Gram',
+              '$value / Gm.',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
