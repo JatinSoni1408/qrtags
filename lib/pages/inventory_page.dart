@@ -223,9 +223,10 @@ class _InventoryPageState extends State<InventoryPage> {
     required int limit,
     DocumentSnapshot<Map<String, dynamic>>? cursor,
   }) {
-    Query<Map<String, dynamic>> query = _tagRepository
-        .queryTags()
-        .orderBy('createdAt', descending: true);
+    Query<Map<String, dynamic>> query = _tagRepository.queryTags().orderBy(
+      'createdAt',
+      descending: true,
+    );
 
     if (cursor != null) {
       query = query.startAfterDocument(cursor);
@@ -402,6 +403,7 @@ class _InventoryPageState extends State<InventoryPage> {
         }
         return tag.createdAtMillis;
       }
+
       tags.sort((a, b) => sortMillis(b).compareTo(sortMillis(a)));
       if (!mounted) {
         return;
@@ -477,8 +479,19 @@ class _InventoryPageState extends State<InventoryPage> {
     return tags;
   }
 
-  List<TagRecord> _selectedLoadedDocs() {
-    return _loadedTags.where((doc) => _selectedIds.contains(doc.id)).toList();
+  List<TagRecord> _selectedInventoryDocs() {
+    final selected = <String, TagRecord>{};
+    for (final doc in _loadedTags) {
+      if (_selectedIds.contains(doc.id)) {
+        selected[doc.id] = doc;
+      }
+    }
+    for (final doc in _recentlyAddedTags) {
+      if (_selectedIds.contains(doc.id)) {
+        selected[doc.id] = doc;
+      }
+    }
+    return selected.values.toList();
   }
 
   List<TagRecord> _filteredNewTags() {
@@ -489,6 +502,159 @@ class _InventoryPageState extends State<InventoryPage> {
     return _filteredNewTags()
         .where((doc) => _selectedNewIds.contains(doc.id))
         .toList();
+  }
+
+  List<TagRecord> _visibleSummaryTags(List<TagRecord> filteredNewDocs) {
+    if (_listMode != _InventoryListMode.inventory) {
+      return filteredNewDocs;
+    }
+    if (!_appendRecentToInventory) {
+      return List<TagRecord>.from(_loadedTags);
+    }
+    return <TagRecord>[..._recentlyAddedTags, ..._loadedTags];
+  }
+
+  String _normalizeSummaryCategoryKey(String category) {
+    return category
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('-', '');
+  }
+
+  double _parseWeightValue(String value) {
+    final cleaned = value.trim().replaceAll(',', '');
+    final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(cleaned);
+    return double.tryParse(match?.group(0) ?? '') ?? 0.0;
+  }
+
+  Map<String, _InventoryWeightTotals> _buildVisibleWeightTotals(
+    List<TagRecord> tags,
+  ) {
+    final totals = <String, _InventoryWeightTotals>{
+      'gold22kt': _InventoryWeightTotals(),
+      'gold18kt': _InventoryWeightTotals(),
+      'silver': _InventoryWeightTotals(),
+    };
+    for (final tag in tags) {
+      final key = _normalizeSummaryCategoryKey(tag.category);
+      final bucket = totals[key];
+      if (bucket == null) {
+        continue;
+      }
+      bucket.gross += _parseWeightValue(tag.grossWeight);
+      bucket.less += _parseWeightValue(tag.lessWeight);
+      bucket.nett += _parseWeightValue(tag.netWeight);
+    }
+    return totals;
+  }
+
+  String _summaryCategoryLabel(String categoryKey) {
+    switch (categoryKey) {
+      case 'gold22kt':
+        return 'Gold22K';
+      case 'gold18kt':
+        return 'Gold18K';
+      case 'silver':
+        return 'Silver';
+      default:
+        return categoryKey;
+    }
+  }
+
+  String _summaryCategoryColorName(String categoryKey) {
+    switch (categoryKey) {
+      case 'gold22kt':
+        return 'Gold22kt';
+      case 'gold18kt':
+        return 'Gold18kt';
+      case 'silver':
+        return 'Silver';
+      default:
+        return categoryKey;
+    }
+  }
+
+  String _formatWeightTotal(double value) => value.toStringAsFixed(3);
+
+  Widget _buildSummaryCountChip(String label, String value) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetSummaryTile(
+    String categoryKey,
+    _InventoryWeightTotals totals,
+  ) {
+    final theme = Theme.of(context);
+    final categoryName = _summaryCategoryColorName(categoryKey);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _categoryBackgroundColor(categoryName, theme.colorScheme),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _categoryBorderColor(
+            categoryName,
+            theme.colorScheme,
+          ).withValues(alpha: 0.32),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _summaryCategoryLabel(categoryKey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _formatWeightTotal(totals.nett),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _runAllItemsAction(
@@ -655,11 +821,10 @@ class _InventoryPageState extends State<InventoryPage> {
         prefix: prefix,
         extension: 'pdf',
       ).nextName();
-      await Share.shareXFiles([
-        XFile.fromData(bytes, name: fileName, mimeType: 'application/pdf'),
-      ], fileNameOverrides: [
-        fileName,
-      ]);
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, name: fileName, mimeType: 'application/pdf')],
+        fileNameOverrides: [fileName],
+      );
       if (onSuccess != null) {
         await onSuccess();
       }
@@ -730,7 +895,9 @@ class _InventoryPageState extends State<InventoryPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Transferred ${ids.length} item(s) to inventory')),
+        SnackBar(
+          content: Text('Transferred ${ids.length} item(s) to inventory'),
+        ),
       );
       setState(() {
         _listMode = _InventoryListMode.inventory;
@@ -742,7 +909,9 @@ class _InventoryPageState extends State<InventoryPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to transfer recently added items')),
+        const SnackBar(
+          content: Text('Failed to transfer recently added items'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -800,19 +969,13 @@ class _InventoryPageState extends State<InventoryPage> {
         .replaceAll('-', '');
     final isDark = colorScheme.brightness == Brightness.dark;
     if (normalized == 'gold22kt') {
-      return isDark
-          ? const Color(0xFF3A3217)
-          : const Color(0xFFF0F0DB);
+      return isDark ? const Color(0xFF3A3217) : const Color(0xFFF0F0DB);
     }
     if (normalized == 'gold18kt') {
-      return isDark
-          ? const Color(0xFF3A301A)
-          : const Color(0xFFE1D9BC);
+      return isDark ? const Color(0xFF3A301A) : const Color(0xFFE1D9BC);
     }
     if (normalized == 'silver') {
-      return isDark
-          ? const Color(0xFF2F343B)
-          : const Color(0xFFE1E2E4);
+      return isDark ? const Color(0xFF2F343B) : const Color(0xFFE1E2E4);
     }
     return isDark
         ? colorScheme.surfaceContainerHigh
@@ -827,19 +990,13 @@ class _InventoryPageState extends State<InventoryPage> {
         .replaceAll('-', '');
     final isDark = colorScheme.brightness == Brightness.dark;
     if (normalized == 'gold22kt') {
-      return isDark
-          ? const Color(0xFFE7CB68)
-          : const Color(0xFFB38F00);
+      return isDark ? const Color(0xFFE7CB68) : const Color(0xFFB38F00);
     }
     if (normalized == 'gold18kt') {
-      return isDark
-          ? const Color(0xFFD6B777)
-          : const Color(0xFF9E8130);
+      return isDark ? const Color(0xFFD6B777) : const Color(0xFF9E8130);
     }
     if (normalized == 'silver') {
-      return isDark
-          ? const Color(0xFFB8C0CB)
-          : const Color(0xFF8C8C8C);
+      return isDark ? const Color(0xFFB8C0CB) : const Color(0xFF8C8C8C);
     }
     return isDark ? colorScheme.outline : colorScheme.primary;
   }
@@ -1005,6 +1162,10 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Widget _buildList() {
+    final hasVisibleItems =
+        _loadedTags.isNotEmpty ||
+        (_appendRecentToInventory &&
+            (_recentlyAddedTags.isNotEmpty || _isLoadingRecent));
     if (_isInitialLoading && _loadedTags.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1026,7 +1187,7 @@ class _InventoryPageState extends State<InventoryPage> {
         ),
       );
     }
-    if (_loadedTags.isEmpty) {
+    if (!hasVisibleItems) {
       if (_hasMore) {
         return Center(
           child: OutlinedButton(
@@ -1053,10 +1214,10 @@ class _InventoryPageState extends State<InventoryPage> {
             Row(
               children: [
                 Text(
-                  'Recently Added',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  'Recently Added (${_recentlyAddedTags.length})',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(width: 8),
                 if (_isLoadingRecent)
@@ -1080,8 +1241,8 @@ class _InventoryPageState extends State<InventoryPage> {
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
-                onPressed: !_isTransferringRecent &&
-                        _recentlyAddedTags.isNotEmpty
+                onPressed:
+                    !_isTransferringRecent && _recentlyAddedTags.isNotEmpty
                     ? _transferRecentToInventory
                     : null,
                 icon: _isTransferringRecent
@@ -1099,9 +1260,9 @@ class _InventoryPageState extends State<InventoryPage> {
             const SizedBox(height: 4),
             Text(
               'Inventory',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
           ],
@@ -1197,10 +1358,12 @@ class _InventoryPageState extends State<InventoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedDocs = _selectedLoadedDocs();
+    final selectedInventoryDocs = _selectedInventoryDocs();
     final selectedNewDocs = _selectedNewDocs();
     final filteredNewDocs = _filteredNewTags();
     final isInventoryMode = _listMode == _InventoryListMode.inventory;
+    final visibleSummaryTags = _visibleSummaryTags(filteredNewDocs);
+    final visibleWeightTotals = _buildVisibleWeightTotals(visibleSummaryTags);
 
     return Column(
       children: [
@@ -1352,9 +1515,12 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: selectedDocs.isEmpty
+                        onPressed: selectedInventoryDocs.isEmpty
                             ? null
-                            : () => _exportQrPdf(selectedDocs, prefix: 'is'),
+                            : () => _exportQrPdf(
+                                selectedInventoryDocs,
+                                prefix: 'is',
+                              ),
                         icon: const Icon(Icons.article),
                         label: const Text('PDF Selected'),
                       ),
@@ -1446,38 +1612,78 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ),
         Expanded(child: isInventoryMode ? _buildList() : _buildNewList()),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 6,
-                color: Colors.black12,
-                offset: Offset(0, -2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Text(
-                'Saved Tags ($_totalCount)',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Inventory ${_loadedTags.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'New ${filteredNewDocs.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
+        Material(
+          elevation: 8,
+          color: Theme.of(context).colorScheme.surface,
+          child: SafeArea(
+            top: false,
+            minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildSummaryCountChip('Saved Tags', '$_totalCount'),
+                    _buildSummaryCountChip(
+                      'Inventory',
+                      '${_loadedTags.length}',
+                    ),
+                    if (_appendRecentToInventory)
+                      _buildSummaryCountChip(
+                        'Recent',
+                        '${_recentlyAddedTags.length}',
+                      ),
+                    _buildSummaryCountChip('New', '${filteredNewDocs.length}'),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  isInventoryMode
+                      ? 'Total Stocks (Net Weight)'
+                      : 'Newly Created Totals (Net Weight)',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildNetSummaryTile(
+                        'gold22kt',
+                        visibleWeightTotals['gold22kt']!,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildNetSummaryTile(
+                        'gold18kt',
+                        visibleWeightTotals['gold18kt']!,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildNetSummaryTile(
+                        'silver',
+                        visibleWeightTotals['silver']!,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
+}
+
+class _InventoryWeightTotals {
+  double gross = 0;
+  double less = 0;
+  double nett = 0;
 }
