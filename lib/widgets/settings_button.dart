@@ -320,15 +320,25 @@ class SettingsButton extends StatelessWidget {
                     const SizedBox(height: 12),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: _ReturnRateText(
-                        text: 'Return Rate 22kt ${_formatIndian(return22)}',
+                      child: Text(
+                        'Return Rate 22kt ${_formatIndian(return22)}',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: _ReturnRateText(
-                        text: 'Return Rate 18kt ${_formatIndian(return18)}',
+                      child: Text(
+                        'Return Rate 18kt ${_formatIndian(return18)}',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ],
@@ -416,61 +426,6 @@ class _IndianRateInputFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: clampedOffset),
-    );
-  }
-}
-
-class _ReturnRateText extends StatefulWidget {
-  const _ReturnRateText({required this.text});
-
-  final String text;
-
-  @override
-  State<_ReturnRateText> createState() => _ReturnRateTextState();
-}
-
-class _ReturnRateTextState extends State<_ReturnRateText>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _offset;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 120),
-    )..repeat(reverse: true);
-    _offset = Tween<double>(
-      begin: -1.5,
-      end: 1.5,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _offset,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(_offset.value, 0),
-          child: child,
-        );
-      },
-      child: Text(
-        widget.text,
-        style: const TextStyle(
-          color: Colors.red,
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      ),
     );
   }
 }

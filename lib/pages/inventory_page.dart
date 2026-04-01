@@ -219,6 +219,10 @@ class _InventoryPageState extends State<InventoryPage> {
     return tag.matchesSearch(_debouncedSearch);
   }
 
+  bool _matchesSavedFilters(TagRecord tag) {
+    return tag.matchesSearch(_debouncedSearch);
+  }
+
   Query<Map<String, dynamic>> _buildPagedQuery({
     required int limit,
     DocumentSnapshot<Map<String, dynamic>>? cursor,
@@ -428,7 +432,7 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  Future<List<TagRecord>> _fetchAllMatchingTags() async {
+  Future<List<TagRecord>> _fetchAllSavedTags() async {
     const batchSize = 200;
     final tags = <TagRecord>[];
     DocumentSnapshot<Map<String, dynamic>>? cursor;
@@ -444,7 +448,7 @@ class _InventoryPageState extends State<InventoryPage> {
       }
       final pageTags = rawDocs
           .map(_tagRepository.toTagRecord)
-          .where(_matchesInventoryFilters)
+          .where(_matchesSavedFilters)
           .toList();
       tags.addAll(pageTags);
       cursor = rawDocs.last;
@@ -610,6 +614,52 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  Widget _buildTopFilterButton({
+    required Widget child,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: selected ? colorScheme.primaryContainer : colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(999),
+        side: BorderSide(
+          color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: SizedBox(
+          height: 40,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Center(
+              child: DefaultTextStyle(
+                style: theme.textTheme.labelLarge!.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface,
+                ),
+                child: IconTheme(
+                  data: IconThemeData(
+                    color: selected
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSurface,
+                  ),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNetSummaryTile(
     String categoryKey,
     _InventoryWeightTotals totals,
@@ -667,7 +717,9 @@ class _InventoryPageState extends State<InventoryPage> {
       _isLoadingAllAction = true;
     });
     try {
-      final tags = await _fetchAllMatchingTags();
+      final tags = _appendRecentToInventory
+          ? List<TagRecord>.from(_recentlyAddedTags)
+          : await _fetchAllSavedTags();
       await action(tags);
     } finally {
       if (mounted) {
@@ -1394,85 +1446,95 @@ class _InventoryPageState extends State<InventoryPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Row(
                 children: [
-                  ChoiceChip(
-                    label: const Text('Inventory'),
-                    selected: isInventoryMode && !_appendRecentToInventory,
-                    onSelected: (_) {
-                      setState(() {
-                        _listMode = _InventoryListMode.inventory;
-                        _appendRecentToInventory = false;
-                        _selectionMode = false;
-                        _newSelectionMode = false;
-                        _selectedIds.clear();
-                        _selectedNewIds.clear();
-                      });
-                      if (_inventoryListDirty || _loadedTags.isEmpty) {
-                        _inventoryListDirty = false;
-                        _refreshInventory();
-                      }
-                    },
-                  ),
-                  ChoiceChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Newly Created'),
-                        if (_pendingNewCount > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade600,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$_pendingNewCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                  Expanded(
+                    child: _buildTopFilterButton(
+                      selected: isInventoryMode && !_appendRecentToInventory,
+                      onTap: () {
+                        setState(() {
+                          _listMode = _InventoryListMode.inventory;
+                          _appendRecentToInventory = false;
+                          _selectionMode = false;
+                          _newSelectionMode = false;
+                          _selectedIds.clear();
+                          _selectedNewIds.clear();
+                        });
+                        if (_inventoryListDirty || _loadedTags.isEmpty) {
+                          _inventoryListDirty = false;
+                          _refreshInventory();
+                        }
+                      },
+                      child: const Text('Inventory'),
                     ),
-                    selected: !isInventoryMode,
-                    onSelected: (_) {
-                      setState(() {
-                        _listMode = _InventoryListMode.newlyCreated;
-                        _appendRecentToInventory = false;
-                        _selectionMode = false;
-                        _newSelectionMode = false;
-                        _selectedIds.clear();
-                        _selectedNewIds.clear();
-                      });
-                      _refreshNewlyCreated();
-                    },
                   ),
-                  FilterChip(
-                    label: const Text('Recent Added'),
-                    selected: _appendRecentToInventory,
-                    onSelected: (value) {
-                      setState(() {
-                        _appendRecentToInventory = value;
-                        _listMode = _InventoryListMode.inventory;
-                        _selectionMode = false;
-                        _newSelectionMode = false;
-                        _selectedIds.clear();
-                        _selectedNewIds.clear();
-                      });
-                      if (value) {
-                        _refreshRecentlyAdded();
-                      }
-                    },
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTopFilterButton(
+                      selected: _appendRecentToInventory,
+                      onTap: () {
+                        final nextValue = !_appendRecentToInventory;
+                        setState(() {
+                          _appendRecentToInventory = nextValue;
+                          _listMode = _InventoryListMode.inventory;
+                          _selectionMode = false;
+                          _newSelectionMode = false;
+                          _selectedIds.clear();
+                          _selectedNewIds.clear();
+                        });
+                        if (nextValue) {
+                          _refreshRecentlyAdded();
+                        }
+                      },
+                      child: const Text('Recent Added'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTopFilterButton(
+                      selected: !isInventoryMode,
+                      onTap: () {
+                        setState(() {
+                          _listMode = _InventoryListMode.newlyCreated;
+                          _appendRecentToInventory = false;
+                          _selectionMode = false;
+                          _newSelectionMode = false;
+                          _selectedIds.clear();
+                          _selectedNewIds.clear();
+                        });
+                        _refreshNewlyCreated();
+                      },
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Newly Created'),
+                            if (_pendingNewCount > 0) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade600,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$_pendingNewCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

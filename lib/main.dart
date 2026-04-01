@@ -754,6 +754,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<_AppTab> get _tabOrder => widget.isStaff
       ? const [_AppTab.bhav, _AppTab.scan, _AppTab.old, _AppTab.total]
       : const [
+          _AppTab.bhav,
           _AppTab.inventory,
           _AppTab.tags,
           _AppTab.scan,
@@ -795,6 +796,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     if (currentTab == _AppTab.tags && _hasTab(_AppTab.inventory)) {
       _setTab(_AppTab.inventory);
+      return;
+    }
+    if (currentTab == _AppTab.inventory && _hasTab(_AppTab.bhav)) {
+      _setTab(_AppTab.bhav);
       return;
     }
     final shouldExit = await _confirmExit();
@@ -1024,6 +1029,8 @@ class _MyHomePageState extends State<MyHomePage> {
           currentIndex: _selectedIndex,
           selectedItemColor: Theme.of(context).colorScheme.primary,
           type: BottomNavigationBarType.fixed,
+          showSelectedLabels: false,
+          showUnselectedLabels: false,
           onTap: (index) async {
             final targetTab = _tabOrder[index];
             if (targetTab == _AppTab.total) {
