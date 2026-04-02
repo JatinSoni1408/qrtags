@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/storage_keys.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -11,20 +13,19 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  static const String _lastEmailKey = 'login_last_email';
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isCreatingUser = false;
   bool _isSendingReset = false;
   bool _obscure = true;
+  bool _autoLoginAttempted = false;
 
   bool _isSixDigitPin(String value) => RegExp(r'^\d{6}$').hasMatch(value);
 
   @override
   void initState() {
     super.initState();
-    _loadLastCredentials();
+    _restoreLoginState();
   }
 
   @override
@@ -34,32 +35,71 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  Future<void> _loadLastCredentials() async {
+  Future<void> _restoreLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) {
       return;
     }
-    _emailController.text = prefs.getString(_lastEmailKey) ?? '';
+    final savedEmail = prefs.getString(StorageKeys.loginLastEmail) ?? '';
+    final savedPin = prefs.getString(StorageKeys.loginSavedPin) ?? '';
+    final manualLogout =
+        prefs.getBool(StorageKeys.manualLogoutRequested) ?? false;
+    _emailController.text = savedEmail;
+    if (_autoLoginAttempted ||
+        manualLogout ||
+        savedEmail.isEmpty ||
+        savedPin.isEmpty) {
+      return;
+    }
+    _autoLoginAttempted = true;
+    await _submit(
+      emailOverride: savedEmail,
+      passwordOverride: savedPin,
+      isAutoLogin: true,
+    );
+  }
+
+  Future<void> _saveLoginCredentials({
+    required String email,
+    required String pin,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageKeys.loginLastEmail, email);
+    await prefs.setString(StorageKeys.loginSavedPin, pin);
+    await prefs.remove(StorageKeys.manualLogoutRequested);
   }
 
   Future<void> _saveLastEmail(String email) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastEmailKey, email);
+    await prefs.setString(StorageKeys.loginLastEmail, email);
   }
 
-  Future<void> _submit() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
+  Future<void> _clearSavedPin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(StorageKeys.loginSavedPin);
+  }
+
+  Future<void> _submit({
+    String? emailOverride,
+    String? passwordOverride,
+    bool isAutoLogin = false,
+  }) async {
+    final email = (emailOverride ?? _emailController.text).trim();
+    final password = passwordOverride ?? _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email and password are required')),
-      );
+      if (!isAutoLogin) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email and password are required')),
+        );
+      }
       return;
     }
     if (!_isSixDigitPin(password)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a 6-digit PIN')),
-      );
+      if (!isAutoLogin) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Enter a 6-digit PIN')));
+      }
       return;
     }
     await _saveLastEmail(email);
@@ -71,7 +111,14 @@ class _LoginPageState extends State<LoginPage> {
         email: email,
         password: password,
       );
+      await _saveLoginCredentials(email: email, pin: password);
     } on FirebaseAuthException catch (e) {
+      if (isAutoLogin &&
+          (e.code == 'user-not-found' ||
+              e.code == 'wrong-password' ||
+              e.code == 'invalid-credential')) {
+        await _clearSavedPin();
+      }
       if (!mounted) {
         return;
       }
@@ -80,9 +127,11 @@ class _LoginPageState extends State<LoginPage> {
         'wrong-password' => 'Invalid credentials',
         _ => 'Authentication failed',
       };
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? fallbackMessage)));
+      if (!isAutoLogin) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message ?? fallbackMessage)));
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -127,61 +176,9 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _createUser() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email and password are required')),
-      );
-      return;
-    }
-    if (!_isSixDigitPin(password)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a 6-digit PIN')),
-      );
-      return;
-    }
-    await _saveLastEmail(email);
-    setState(() {
-      _isCreatingUser = true;
-    });
-    try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User created successfully')),
-      );
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) {
-        return;
-      }
-      final fallbackMessage = switch (e.code) {
-        'email-already-in-use' => 'Email already in use',
-        'invalid-email' => 'Invalid email address',
-        'weak-password' => 'Please use a stronger password',
-        _ => 'Unable to create user',
-      };
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? fallbackMessage)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isCreatingUser = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isBusy = _isLoading || _isSendingReset || _isCreatingUser;
+    final isBusy = _isLoading || _isSendingReset;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -243,18 +240,11 @@ class _LoginPageState extends State<LoginPage> {
                           _isSendingReset ? 'Sending...' : 'Forgot password?',
                         ),
                       ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: isBusy ? null : _createUser,
-                        child: Text(
-                          _isCreatingUser ? 'Creating...' : 'Create New User',
-                        ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: isBusy ? null : _submit,
+                    onPressed: isBusy ? null : () => _submit(),
                     child: _isLoading
                         ? const SizedBox(
                             width: 20,

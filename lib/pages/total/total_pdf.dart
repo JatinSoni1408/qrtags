@@ -1,13 +1,6 @@
 part of '../total_page.dart';
 
 extension _TotalPagePdfExtension on _TotalPageState {
-  String _formatInvoiceNumber(DateTime now, int sequence) {
-    final datePart =
-        '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}';
-    final sequencePart = sequence.toString().padLeft(4, '0');
-    return 'INV-$datePart-$sequencePart';
-  }
-
   String _fallbackInvoiceNumber(DateTime now) {
     return 'INV-${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}-${_twoDigits(now.hour)}${_twoDigits(now.minute)}${_twoDigits(now.second)}';
   }
@@ -24,14 +17,12 @@ extension _TotalPagePdfExtension on _TotalPageState {
         _activeInvoiceNo = storedDraft;
         return storedDraft;
       }
-      final next = (prefs.getInt(StorageKeys.totalInvoiceCounter) ?? 0) + 1;
-      final invoiceNo = _formatInvoiceNumber(dateTime, next);
-      await prefs.setInt(StorageKeys.totalInvoiceCounter, next);
+      final invoiceNo = _fallbackInvoiceNumber(dateTime);
       await prefs.setString(StorageKeys.totalDraftInvoiceNo, invoiceNo);
       _activeInvoiceNo = invoiceNo;
       return invoiceNo;
     } catch (error, stackTrace) {
-      debugPrint('TotalPage: failed to fetch invoice sequence: $error');
+      debugPrint('TotalPage: failed to create invoice number: $error');
       debugPrintStack(stackTrace: stackTrace);
       final fallback = _fallbackInvoiceNumber(dateTime);
       _activeInvoiceNo = fallback;
@@ -43,7 +34,8 @@ extension _TotalPagePdfExtension on _TotalPageState {
     _TotalsData data,
     double cashReceived,
     double upiReceived,
-    double discount,
+    double rawDiscount,
+    bool gPercentEnabled,
     List<_PaymentEntryPdfRow> paymentEntries,
     String customerName,
     String customerMobile,
@@ -56,9 +48,16 @@ extension _TotalPagePdfExtension on _TotalPageState {
     final now = DateTime.now();
     final normalizedCustomerName = customerName.trim();
     final normalizedCustomerMobile = customerMobile.trim();
-    final netPayable = data.selectedTotal - data.oldTotal - discount;
-    final totalReceived = cashReceived + upiReceived;
-    final diff = _normalizeMoneyDelta(netPayable - totalReceived);
+    final payment = _computePaymentComputation(
+      data: data,
+      cashReceived: cashReceived,
+      upiReceived: upiReceived,
+      rawDiscount: rawDiscount,
+      gPercentEnabledOverride: gPercentEnabled,
+    );
+    final netPayable = payment.netPayable;
+    final totalReceived = payment.totalReceived;
+    final diff = payment.diff;
     final dueLabel = diff < 0
         ? tr('Refund Amount', 'वापसी राशि')
         : tr('Due Amount', 'बकाया राशि');
@@ -67,8 +66,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
         '${diff < 0 ? '-' : ''}${PriceCalculator.formatIndianAmount(dueValue)}';
     final billDateShort =
         '${_twoDigits(now.day)}/${_twoDigits(now.month)}/${_twoDigits(now.year % 100)}';
-    final hasGstApplied = data.selectedItems
-        .any((item) => item.gstAmount.abs() > 0.000001);
+    final hasGstApplied = data.selectedItems.any(
+      (item) => item.gstAmount.abs() > 0.000001,
+    );
     final hasNonCashEntry = paymentEntries.any(
       (entry) => PaymentEntryCalculator.isNonCashMode(entry.mode),
     );
@@ -260,16 +260,13 @@ extension _TotalPagePdfExtension on _TotalPageState {
         return pw.SizedBox.shrink();
       }
 
-      pw.Widget cell(
-        String text, {
-        bool right = false,
-        bool bold = false,
-      }) {
+      pw.Widget cell(String text, {bool right = false, bool bold = false}) {
         return pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
           child: pw.Align(
-            alignment:
-                right ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
+            alignment: right
+                ? pw.Alignment.centerRight
+                : pw.Alignment.centerLeft,
             child: pw.Text(
               text,
               maxLines: 1,
@@ -284,10 +281,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
         );
       }
 
-      pw.Widget fittedItemCell(
-        String text, {
-        bool bold = false,
-      }) {
+      pw.Widget fittedItemCell(String text, {bool bold = false}) {
         final displayText = text.trim().isEmpty ? '' : text;
         return pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 6),
@@ -298,8 +292,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
                     '',
                     style: pw.TextStyle(
                       fontSize: 9.3,
-                      fontWeight:
-                          bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                      fontWeight: bold
+                          ? pw.FontWeight.bold
+                          : pw.FontWeight.normal,
                     ),
                   )
                 : pw.FittedBox(
@@ -312,8 +307,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       overflow: pw.TextOverflow.clip,
                       style: pw.TextStyle(
                         fontSize: 9.3,
-                        fontWeight:
-                            bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                        fontWeight: bold
+                            ? pw.FontWeight.bold
+                            : pw.FontWeight.normal,
                       ),
                     ),
                   ),
@@ -339,10 +335,14 @@ extension _TotalPagePdfExtension on _TotalPageState {
           ),
           ...(() {
             final sorted = itemsWithAdditionals.toList()
-              ..sort((a, b) => (itemSerialOrder[a] ?? 0)
-                  .compareTo(itemSerialOrder[b] ?? 0));
+              ..sort(
+                (a, b) => (itemSerialOrder[a] ?? 0).compareTo(
+                  itemSerialOrder[b] ?? 0,
+                ),
+              );
             return sorted.expand((item) {
-              final itemIndex = itemSerialOrder[item] ??
+              final itemIndex =
+                  itemSerialOrder[item] ??
                   (itemsWithAdditionals.indexOf(item) + 1);
               return item.additionalBreakup.entries.map(
                 (additional) => pw.TableRow(
@@ -542,28 +542,28 @@ extension _TotalPagePdfExtension on _TotalPageState {
     const pdfBottomMargin = 24.0;
     const pagesToGenerate = 1;
     for (var i = 0; i < pagesToGenerate; i++) {
-    doc.addPage(
-      pw.Page(
-        pageFormat: effectivePageFormat,
-        margin: const pw.EdgeInsets.fromLTRB(
-          pdfLeftPunchMargin,
-          pdfTopMargin,
-          pdfRightMargin,
-          pdfBottomMargin,
-        ),
-        build: (context) {
-          final contentWidth =
-              effectivePageFormat.width - pdfLeftPunchMargin - pdfRightMargin;
-          final contentHeight =
-              effectivePageFormat.height - pdfTopMargin - pdfBottomMargin;
+      doc.addPage(
+        pw.Page(
+          pageFormat: effectivePageFormat,
+          margin: const pw.EdgeInsets.fromLTRB(
+            pdfLeftPunchMargin,
+            pdfTopMargin,
+            pdfRightMargin,
+            pdfBottomMargin,
+          ),
+          build: (context) {
+            final contentWidth =
+                effectivePageFormat.width - pdfLeftPunchMargin - pdfRightMargin;
+            final contentHeight =
+                effectivePageFormat.height - pdfTopMargin - pdfBottomMargin;
 
-          pw.Widget buildBillContent() {
-            return pw.SizedBox(
-              width: contentWidth,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                children: [
-                  pw.Center(
+            pw.Widget buildBillContent() {
+              return pw.SizedBox(
+                width: contentWidth,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    pw.Center(
                       child: shreeHeaderImage == null
                           ? pw.Text(
                               'Shree',
@@ -644,7 +644,10 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                                 children: [
                                   pw.Text(
-                                    tr('Additionals Summary', 'अतिरिक्त सारांश'),
+                                    tr(
+                                      'Additionals Summary',
+                                      'अतिरिक्त सारांश',
+                                    ),
                                     style: sectionStyle,
                                   ),
                                   pw.SizedBox(height: 6),
@@ -692,7 +695,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                               tr('Net', 'नेट'),
                               tr('Rate', 'रेट'),
                               tr('Making', 'मेकिंग'),
-                               tr('Others', 'Others'),
+                              tr('Others', 'Others'),
                               tr('Additional', 'अतिरिक्त'),
                               tr('Purity', 'शुद्धता'),
                               tr('Total', 'कुल'),
@@ -766,8 +769,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
                         ),
                         cellBuilder: (index, cell, rowNum) {
                           final cellText = cell?.toString() ?? '';
-                          final displayText =
-                              cellText.trim().isEmpty ? '' : cellText;
+                          final displayText = cellText.trim().isEmpty
+                              ? ''
+                              : cellText;
                           return pw.Padding(
                             padding: const pw.EdgeInsets.symmetric(
                               horizontal: 2,
@@ -803,7 +807,9 @@ extension _TotalPagePdfExtension on _TotalPageState {
                           3: const pw.FlexColumnWidth(1.1),
                           4: const pw.FlexColumnWidth(1.0),
                           5: const pw.FlexColumnWidth(1.0),
-                          6: const pw.FlexColumnWidth(1.2), // Rate (slightly narrower)
+                          6: const pw.FlexColumnWidth(
+                            1.2,
+                          ), // Rate (slightly narrower)
                           7: const pw.FlexColumnWidth(1.0),
                           8: const pw.FlexColumnWidth(1.1),
                           9: const pw.FlexColumnWidth(1.6),
@@ -887,17 +893,25 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                     data.selectedTotal,
                                   ),
                                 ),
-                                keyValue(
-                                  tr(
-                                    'Old Items Deduction',
-                                    'पुराना सोना कटौती',
+                                if (data.oldItems.isNotEmpty)
+                                  keyValue(
+                                    tr(
+                                      'Old Items Deduction',
+                                      'पुराना सोना कटौती',
+                                    ),
+                                    '-${PriceCalculator.formatIndianAmount(data.oldTotal)}',
                                   ),
-                                  '-${PriceCalculator.formatIndianAmount(data.oldTotal)}',
-                                ),
-                                if (discount > 0)
+                                if (payment.gPercentCharge > 0)
+                                  keyValue(
+                                    'Others',
+                                    PriceCalculator.formatIndianAmount(
+                                      payment.gPercentCharge,
+                                    ),
+                                  ),
+                                if (payment.discountApplied > 0)
                                   keyValue(
                                     tr('Discount', 'छूट'),
-                                    '-${PriceCalculator.formatIndianAmount(discount)}',
+                                    '-${PriceCalculator.formatIndianAmount(payment.discountApplied)}',
                                   ),
                                 keyValue(
                                   tr('Total Payable', 'देय कुल राशि'),
@@ -1048,10 +1062,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                                   pw.Text('-', style: labelStyle),
                                 pw.SizedBox(height: 5),
                                 keyValue(
-                                  tr(
-                                    'Total Amount',
-                                    'कुल राशि',
-                                  ),
+                                  tr('Total Amount', 'कुल राशि'),
                                   PriceCalculator.formatIndianAmount(
                                     totalReceived,
                                   ),
@@ -1067,63 +1078,60 @@ extension _TotalPagePdfExtension on _TotalPageState {
                       pw.Padding(
                         padding: const pw.EdgeInsets.only(top: 12),
                         child: pw.Center(
-                          child: pw.Text(
-                            'BILL PENDING',
-                            style: sectionStyle,
-                          ),
+                          child: pw.Text('BILL PENDING', style: sectionStyle),
                         ),
                       ),
-                ],
-              ),
-            );
-          }
-
-          pw.Widget buildHalfBill() {
-            return buildBillContent();
-          }
-
-          pw.Widget buildRotatedHalfBill() {
-            return pw.Align(
-              alignment: pw.Alignment.centerLeft,
-              child: pw.FittedBox(
-                fit: pw.BoxFit.scaleDown,
-                alignment: pw.Alignment.centerLeft,
-                child: pw.Transform.rotateBox(
-                  angle: math.pi / 2,
-                  child: buildHalfBill(),
+                  ],
                 ),
-              ),
-            );
-          }
+              );
+            }
 
-          if (singleBill) {
+            pw.Widget buildHalfBill() {
+              return buildBillContent();
+            }
+
+            pw.Widget buildRotatedHalfBill() {
+              return pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Transform.rotateBox(
+                    angle: math.pi / 2,
+                    child: buildHalfBill(),
+                  ),
+                ),
+              );
+            }
+
+            if (singleBill) {
+              return pw.SizedBox(
+                width: contentWidth,
+                height: contentHeight,
+                child: pw.Align(
+                  alignment: pw.Alignment.topLeft,
+                  child: buildBillContent(),
+                ),
+              );
+            }
+
             return pw.SizedBox(
               width: contentWidth,
               height: contentHeight,
-              child: pw.Align(
-                alignment: pw.Alignment.topLeft,
-                child: buildBillContent(),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Expanded(child: buildRotatedHalfBill()),
+                  pw.SizedBox(height: 8),
+                  pw.Container(height: 0.8, color: PdfColors.grey500),
+                  pw.SizedBox(height: 8),
+                  pw.Expanded(child: buildRotatedHalfBill()),
+                ],
               ),
             );
-          }
-
-          return pw.SizedBox(
-            width: contentWidth,
-            height: contentHeight,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
-                pw.Expanded(child: buildRotatedHalfBill()),
-                pw.SizedBox(height: 8),
-                pw.Container(height: 0.8, color: PdfColors.grey500),
-                pw.SizedBox(height: 8),
-                pw.Expanded(child: buildRotatedHalfBill()),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+          },
+        ),
+      );
     }
 
     return doc.save();
@@ -1134,6 +1142,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
     double cashReceived,
     double upiReceived,
     double discount,
+    bool gPercentEnabled,
   ) async {
     if (!_validateCustomerDetails()) {
       return;
@@ -1278,9 +1287,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   ),
                   PdfPreviewAction(
                     icon: Icon(
-                      _previewSingleBill
-                          ? Icons.view_comfy
-                          : Icons.view_agenda,
+                      _previewSingleBill ? Icons.view_comfy : Icons.view_agenda,
                     ),
                     onPressed: (actionContext, build, pageFormat) async {
                       _togglePreviewSingleBill();
@@ -1302,6 +1309,7 @@ extension _TotalPagePdfExtension on _TotalPageState {
                   cashReceived,
                   upiReceived,
                   discount,
+                  gPercentEnabled,
                   paymentEntriesSnapshot,
                   customerName,
                   customerMobile,

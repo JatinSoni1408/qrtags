@@ -93,6 +93,8 @@ class _TotalPageState extends State<TotalPage> {
   bool _printingBill = false;
   bool _sharingBill = false;
   bool _previewSingleBill = false;
+  bool _gPercentEnabled = false;
+  double _gPercentLockedAmount = 0.0;
   _TakeawayMode? _activeTakeawayMode;
   late Future<_TotalsData> _totalsFuture;
 
@@ -107,6 +109,90 @@ class _TotalPageState extends State<TotalPage> {
       return 0.0;
     }
     return value;
+  }
+
+  _PaymentComputation _computePaymentComputation({
+    required _TotalsData data,
+    required double cashReceived,
+    required double upiReceived,
+    required double rawDiscount,
+    bool? gPercentEnabledOverride,
+  }) {
+    final totalReceived = cashReceived + upiReceived;
+    final baseAmount = data.selectedTotal - data.oldTotal;
+    final isGPercentEnabled = gPercentEnabledOverride ?? _gPercentEnabled;
+    if (isGPercentEnabled) {
+      final baseDue = _normalizeMoneyDelta(baseAmount - totalReceived);
+      final gPercentCharge = _gPercentLockedAmount > 0
+          ? _gPercentLockedAmount
+          : (baseDue > 0
+                ? double.parse((baseDue * 0.03).toStringAsFixed(2))
+                : 0.0);
+      final discountApplied = data.discountEnabled
+          ? math.min(rawDiscount, gPercentCharge)
+          : 0.0;
+      final netPayable = baseAmount + gPercentCharge - discountApplied;
+      final diff = _normalizeMoneyDelta(netPayable - totalReceived);
+      return _PaymentComputation(
+        baseAmount: baseAmount,
+        totalReceived: totalReceived,
+        discountApplied: discountApplied,
+        gPercentCharge: gPercentCharge,
+        netPayable: netPayable,
+        diff: diff,
+      );
+    }
+
+    final discountApplied = data.discountEnabled ? rawDiscount : 0.0;
+    final netPayable = baseAmount - discountApplied;
+    final diff = _normalizeMoneyDelta(netPayable - totalReceived);
+    return _PaymentComputation(
+      baseAmount: baseAmount,
+      totalReceived: totalReceived,
+      discountApplied: discountApplied,
+      gPercentCharge: 0.0,
+      netPayable: netPayable,
+      diff: diff,
+    );
+  }
+
+  double _calculateBaseDue({
+    required _TotalsData data,
+    required double cashReceived,
+    required double upiReceived,
+  }) {
+    final baseAmount = data.selectedTotal - data.oldTotal;
+    final totalReceived = cashReceived + upiReceived;
+    return _normalizeMoneyDelta(baseAmount - totalReceived);
+  }
+
+  void _toggleGPercentForCurrentDue({
+    required _TotalsData data,
+    required double cashReceived,
+    required double upiReceived,
+  }) {
+    if (_gPercentEnabled) {
+      setState(() {
+        _gPercentEnabled = false;
+        _gPercentLockedAmount = 0.0;
+      });
+      unawaited(_saveDraft());
+      return;
+    }
+
+    final baseDue = _calculateBaseDue(
+      data: data,
+      cashReceived: cashReceived,
+      upiReceived: upiReceived,
+    );
+    if (baseDue <= 0) {
+      return;
+    }
+    setState(() {
+      _gPercentEnabled = true;
+      _gPercentLockedAmount = double.parse((baseDue * 0.03).toStringAsFixed(2));
+    });
+    unawaited(_saveDraft());
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -570,7 +656,7 @@ class _TotalPageState extends State<TotalPage> {
       builder: (context) {
         final splits = _splitAmounts(amount);
         final badgeStyles = _buildRandomQrCenterStyles(splits.length);
-        final countdownEnd = DateTime.now().add(const Duration(minutes: 5));
+        final countdownEnd = DateTime.now().add(const Duration(minutes: 2));
         return Dialog(
           insetPadding: const EdgeInsets.symmetric(
             horizontal: 14,
@@ -690,12 +776,16 @@ class _TotalPageState extends State<TotalPage> {
                                         ),
                                         builder: (context, snapshot) {
                                           final remaining =
-                                              (snapshot.data ?? 300).clamp(0, 300);
+                                              (snapshot.data ?? 120).clamp(
+                                                0,
+                                                120,
+                                              );
                                           final mins = remaining ~/ 60;
                                           final secs = remaining % 60;
                                           return Text(
                                             'Time left: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}',
                                             style: const TextStyle(
+                                              fontSize: 18,
                                               fontWeight: FontWeight.w700,
                                               color: Colors.red,
                                             ),
@@ -877,9 +967,12 @@ class _TotalPageState extends State<TotalPage> {
       _finishingTransaction = true;
     });
 
-    final netPayable = data.selectedTotal - data.oldTotal - discount;
-    final totalReceived = cashReceived + upiReceived;
-    final due = _normalizeMoneyDelta(netPayable - totalReceived);
+    final payment = _computePaymentComputation(
+      data: data,
+      cashReceived: cashReceived,
+      upiReceived: upiReceived,
+      rawDiscount: discount,
+    );
     final shouldContinue = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -891,13 +984,13 @@ class _TotalPageState extends State<TotalPage> {
             children: [
               Text('Items: ${data.selectedCount}'),
               Text(
-                'Net Payable: ${PriceCalculator.formatIndianAmount(netPayable)}',
+                'Net Payable: ${PriceCalculator.formatIndianAmount(payment.netPayable)}',
               ),
               Text(
-                'Received: ${PriceCalculator.formatIndianAmount(totalReceived)}',
+                'Received: ${PriceCalculator.formatIndianAmount(payment.totalReceived)}',
               ),
               Text(
-                '${due < 0 ? 'Refund' : 'Due'}: ${PriceCalculator.formatIndianAmount(due.abs())}',
+                '${payment.isRefund ? 'Refund' : 'Due'}: ${PriceCalculator.formatIndianAmount(payment.dueAmount)}',
               ),
             ],
           ),
@@ -1003,19 +1096,28 @@ class _TotalPageState extends State<TotalPage> {
         final upiReceived = paymentEntryUpi;
         final l10n = AppLocalizations.of(context)!;
         final rawDiscount = _parseAmount(_discountController.text);
-        final discount = data.discountEnabled ? rawDiscount : 0.0;
-        final netPayable = data.selectedTotal - data.oldTotal - discount;
-        final totalReceived = cashReceived + upiReceived;
-        final diff = _normalizeMoneyDelta(netPayable - totalReceived);
-        final isSettled = diff == 0.0;
-        final dueLabel = diff < 0 ? l10n.refundAmount : l10n.dueAmount;
-        final dueAmount = diff.abs();
+        final payment = _computePaymentComputation(
+          data: data,
+          cashReceived: cashReceived,
+          upiReceived: upiReceived,
+          rawDiscount: rawDiscount,
+        );
+        final totalReceived = payment.totalReceived;
+        final netPayable = payment.netPayable;
+        final diff = payment.diff;
+        final isSettled = payment.isSettled;
+        final dueLabel = payment.isRefund ? l10n.refundAmount : l10n.dueAmount;
+        final dueAmount = payment.dueAmount;
         final dueText =
             '${diff < 0 ? '-' : ''}${PriceCalculator.formatIndianAmount(dueAmount)}';
         final dueColor = diff < 0
             ? Colors.red
             : (diff == 0 ? Colors.blueGrey : Colors.green);
         final canGenerateQr = diff > 0;
+        final canApplyGPercent =
+            _normalizeMoneyDelta(payment.baseAmount - payment.totalReceived) >
+            0;
+        final showGPercentControl = canApplyGPercent || _gPercentEnabled;
         final theme = Theme.of(context);
 
         return Column(
@@ -1291,45 +1393,80 @@ class _TotalPageState extends State<TotalPage> {
                             ),
                             const SizedBox(height: 4),
                             if (data.discountEnabled) ...[
-                              Focus(
-                                onFocusChange: (hasFocus) {
-                                  if (!hasFocus &&
-                                      _discountController.text.isNotEmpty) {
-                                    final plainText = _discountController.text;
-                                    final formatted = _formatIndianCurrency(
-                                      plainText,
-                                    );
-                                    if (formatted != plainText) {
-                                      _discountController.text = formatted;
-                                    }
-                                  } else if (hasFocus &&
-                                      _discountController.text.isNotEmpty) {
-                                    final formattedText =
-                                        _discountController.text;
-                                    final plain = formattedText.replaceAll(
-                                      ',',
-                                      '',
-                                    );
-                                    if (plain != formattedText) {
-                                      _discountController.text = plain;
-                                    }
-                                  }
-                                },
-                                child: TextField(
-                                  controller: _discountController,
-                                  focusNode: _discountFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (showGPercentControl) ...[
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: () =>
+                                            _toggleGPercentForCurrentDue(
+                                              data: data,
+                                              cashReceived: cashReceived,
+                                              upiReceived: upiReceived,
+                                            ),
+                                        style: OutlinedButton.styleFrom(
+                                          backgroundColor: _gPercentEnabled
+                                              ? theme
+                                                    .colorScheme
+                                                    .primaryContainer
+                                              : null,
+                                        ),
+                                        child: const Text('G%'),
                                       ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Discount',
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Expanded(
+                                    flex: 2,
+                                    child: Focus(
+                                      onFocusChange: (hasFocus) {
+                                        if (!hasFocus &&
+                                            _discountController
+                                                .text
+                                                .isNotEmpty) {
+                                          final plainText =
+                                              _discountController.text;
+                                          final formatted =
+                                              _formatIndianCurrency(plainText);
+                                          if (formatted != plainText) {
+                                            _discountController.text =
+                                                formatted;
+                                          }
+                                        } else if (hasFocus &&
+                                            _discountController
+                                                .text
+                                                .isNotEmpty) {
+                                          final formattedText =
+                                              _discountController.text;
+                                          final plain = formattedText
+                                              .replaceAll(',', '');
+                                          if (plain != formattedText) {
+                                            _discountController.text = plain;
+                                          }
+                                        }
+                                      },
+                                      child: TextField(
+                                        controller: _discountController,
+                                        focusNode: _discountFocusNode,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: InputDecoration(
+                                          labelText: 'Discount',
+                                          helperText: _gPercentEnabled
+                                              ? 'Applied on G% amount only'
+                                              : null,
+                                        ),
+                                        onChanged: (value) {
+                                          setState(() {});
+                                          unawaited(_saveDraft());
+                                        },
+                                      ),
+                                    ),
                                   ),
-                                  onChanged: (value) {
-                                    setState(() {});
-                                    unawaited(_saveDraft());
-                                  },
-                                ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                             ],
@@ -1353,24 +1490,56 @@ class _TotalPageState extends State<TotalPage> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
+                            if (payment.gPercentCharge > 0) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Others (G%): ${PriceCalculator.formatIndianAmount(payment.gPercentCharge)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                            if (payment.discountApplied > 0) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Discount Applied: ${PriceCalculator.formatIndianAmount(payment.discountApplied)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                OutlinedButton(
-                                  onPressed: () => unawaited(
-                                    _speakDueAmount(diff: diff, hindi: false),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => unawaited(
+                                      _speakDueAmount(diff: diff, hindi: false),
+                                    ),
+                                    child: const Text('EN'),
                                   ),
-                                  child: const Text('EN'),
                                 ),
                                 const SizedBox(width: 6),
-                                OutlinedButton(
-                                  onPressed: () => unawaited(
-                                    _speakDueAmount(diff: diff, hindi: true),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => unawaited(
+                                      _speakDueAmount(diff: diff, hindi: true),
+                                    ),
+                                    child: Text(l10n.hindiShort),
                                   ),
-                                  child: Text(l10n.hindiShort),
                                 ),
                               ],
                             ),
+                            if (_gPercentEnabled && diff > 0) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Adjusted Due With G%: ${PriceCalculator.formatIndianAmount(dueAmount)}',
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 8),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -1614,7 +1783,8 @@ class _TotalPageState extends State<TotalPage> {
               dueColor: dueColor,
               cashReceived: cashReceived,
               upiReceived: upiReceived,
-              discount: discount,
+              discount: rawDiscount,
+              gPercentEnabled: _gPercentEnabled,
             ),
           ],
         );

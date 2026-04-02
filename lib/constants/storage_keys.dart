@@ -1,6 +1,10 @@
 class StorageKeys {
   const StorageKeys._();
 
+  static const String loginLastEmail = 'login_last_email';
+  static const String loginSavedPin = 'login_saved_pin';
+  static const String manualLogoutRequested = 'manual_logout_requested';
+
   static const String selectedItems = 'selected_items';
   static const String selectedItemsGst = 'selected_items_gst';
   static const String oldItems = 'old_items';
@@ -12,8 +16,10 @@ class StorageKeys {
   static const String totalDraftCustomerMobile = 'total_draft_customer_mobile';
   static const String totalDraftDiscount = 'total_draft_discount';
   static const String totalDraftPaymentEntries = 'total_draft_payment_entries';
+  static const String totalDraftGPercentEnabled =
+      'total_draft_g_percent_enabled';
+  static const String totalDraftGPercentAmount = 'total_draft_g_percent_amount';
   static const String totalDraftInvoiceNo = 'total_draft_invoice_no';
-  static const String totalInvoiceCounter = 'total_invoice_counter';
 
   static const String manualItemsHallmarked = 'manual_items_hallmarked';
 

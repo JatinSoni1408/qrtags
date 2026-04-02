@@ -43,6 +43,7 @@ extension _TotalPageStickyBarExtension on _TotalPageState {
     required double cashReceived,
     required double upiReceived,
     required double discount,
+    required bool gPercentEnabled,
   }) {
     final l10n = AppLocalizations.of(context)!;
     final dueLabel = isRefund ? l10n.refundAmount : l10n.dueAmount;
@@ -83,8 +84,13 @@ extension _TotalPageStickyBarExtension on _TotalPageState {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () =>
-                  _previewTotalsPdf(data, cashReceived, upiReceived, discount),
+              onPressed: () => _previewTotalsPdf(
+                data,
+                cashReceived,
+                upiReceived,
+                discount,
+                gPercentEnabled,
+              ),
               icon: const Icon(Icons.visibility),
               label: const Text('Preview Bill'),
             ),

@@ -91,6 +91,30 @@ class _PaymentEntryPdfRow {
   final double amount;
 }
 
+class _PaymentComputation {
+  const _PaymentComputation({
+    required this.baseAmount,
+    required this.totalReceived,
+    required this.discountApplied,
+    required this.gPercentCharge,
+    required this.netPayable,
+    required this.diff,
+  });
+
+  final double baseAmount;
+  final double totalReceived;
+  final double discountApplied;
+  final double gPercentCharge;
+  final double netPayable;
+  final double diff;
+
+  double get dueAmount => diff.abs();
+
+  bool get isRefund => diff < 0;
+
+  bool get isSettled => diff == 0.0;
+}
+
 class _TotalItemPalette {
   const _TotalItemPalette({
     required this.cardBg,

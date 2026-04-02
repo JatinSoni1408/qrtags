@@ -15,6 +15,14 @@ extension _TotalPageDraftExtension on _TotalPageState {
         StorageKeys.totalDraftDiscount,
         _discountController.text,
       );
+      await prefs.setBool(
+        StorageKeys.totalDraftGPercentEnabled,
+        _gPercentEnabled,
+      );
+      await prefs.setDouble(
+        StorageKeys.totalDraftGPercentAmount,
+        _gPercentLockedAmount,
+      );
       await prefs.setStringList(
         StorageKeys.totalDraftPaymentEntries,
         encodedEntries,
@@ -30,6 +38,8 @@ extension _TotalPageDraftExtension on _TotalPageState {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(StorageKeys.totalDraftDiscount);
       await prefs.remove(StorageKeys.totalDraftPaymentEntries);
+      await prefs.remove(StorageKeys.totalDraftGPercentEnabled);
+      await prefs.remove(StorageKeys.totalDraftGPercentAmount);
       await prefs.remove(StorageKeys.totalDraftInvoiceNo);
       _activeInvoiceNo = null;
     } catch (error, stackTrace) {
@@ -42,6 +52,10 @@ extension _TotalPageDraftExtension on _TotalPageState {
     try {
       final prefs = await SharedPreferences.getInstance();
       final discount = prefs.getString(StorageKeys.totalDraftDiscount) ?? '';
+      final gPercentEnabled =
+          prefs.getBool(StorageKeys.totalDraftGPercentEnabled) ?? false;
+      final gPercentAmount =
+          prefs.getDouble(StorageKeys.totalDraftGPercentAmount) ?? 0.0;
       final entryRaw =
           prefs.getStringList(StorageKeys.totalDraftPaymentEntries) ?? [];
       final loadedEntries = <_PaymentEntryDraft>[];
@@ -76,6 +90,8 @@ extension _TotalPageDraftExtension on _TotalPageState {
       // ignore: invalid_use_of_protected_member
       setState(() {
         _discountController.text = discount;
+        _gPercentEnabled = gPercentEnabled;
+        _gPercentLockedAmount = gPercentAmount;
         for (final entry in _paymentEntries) {
           entry.dispose();
         }

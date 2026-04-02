@@ -40,6 +40,8 @@ Future<void> _resetWorkingPagesStateOnColdStart() async {
     StorageKeys.totalDraftCustomerMobile,
     StorageKeys.totalDraftDiscount,
     StorageKeys.totalDraftPaymentEntries,
+    StorageKeys.totalDraftGPercentEnabled,
+    StorageKeys.totalDraftGPercentAmount,
     // Manual hallmark confirmation tied to current scan session
     StorageKeys.manualItemsHallmarked,
   ];
@@ -1016,6 +1018,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 hoverColor: Colors.transparent,
                 focusColor: Colors.transparent,
                 onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool(StorageKeys.manualLogoutRequested, true);
+                  await prefs.remove(StorageKeys.loginSavedPin);
                   await FirebaseAuth.instance.signOut();
                 },
                 icon: const Icon(Icons.logout, color: Colors.transparent),
